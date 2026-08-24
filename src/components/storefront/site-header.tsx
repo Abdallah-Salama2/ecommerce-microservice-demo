@@ -6,7 +6,7 @@ import { Drawer } from "@/components/ui/panel";
 import { Container } from "@/components/storefront/section";
 import { MiniCartContents, MiniCartFooter } from "@/components/storefront/mini-cart";
 import { useAuthStore } from "@/store/auth";
-
+import { toast } from "sonner";
 const nav = [
   { to: "/shop", label: "Shop all" },
   { to: "/shop", label: "Electronics" },
@@ -25,6 +25,7 @@ export function SiteHeader() {
 
   const handleLogout = async () => {
     await logout();
+    toast.success("Signed out successfully");
     navigate({ to: "/" });
   };
 

@@ -13,7 +13,8 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SiteHeader } from "../components/storefront/site-header";
 import { SiteFooter } from "../components/storefront/site-footer";
-import { useAuthStore } from "@/store/auth";
+import { useAuthStore } from "../store/auth";
+import { Toaster } from "sonner";
 
 function NotFoundComponent() {
   return (
@@ -130,11 +131,16 @@ function RootShell({ children }: { children: ReactNode }) {
 
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
-  const fetchCurrentUser = useAuthStore((state) => state.fetchCurrentUser);
+  const initializeAuth = useAuthStore((state) => state.initializeAuth);
 
+  // Runs once on app startup: tries to silently restore a session
+  // using the httpOnly refresh cookie. This is required because the
+  // access token lives in memory only and is lost on every full reload.
   useEffect(() => {
-    fetchCurrentUser();
-  }, [fetchCurrentUser]);
+    initializeAuth();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen flex-col">
@@ -145,6 +151,7 @@ function RootComponent() {
         </main>
         <SiteFooter />
       </div>
+      <Toaster richColors position="top-center" />
     </QueryClientProvider>
   );
 }

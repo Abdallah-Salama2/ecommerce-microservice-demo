@@ -1,4 +1,4 @@
-import { createFileRoute, Link, redirect } from "@tanstack/react-router";
+import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
@@ -33,8 +33,9 @@ export const Route = createFileRoute("/login")({
 });
 
 function LoginPage() {
+  const navigate = useNavigate();
   const { login, isLoading, error, clearError } = useAuthStore();
-  
+
   const {
     register,
     handleSubmit,
@@ -48,7 +49,11 @@ function LoginPage() {
     try {
       await login(data);
       toast.success("Successfully logged in!");
-      window.location.href = "/"; // Force redirect to refresh auth state
+      // Use client-side navigation, NOT window.location.href.
+      // A hard reload throws away the in-memory access token we just
+      // received, which is why the app looked logged-out right after
+      // a successful login.
+      navigate({ to: "/" });
     } catch (err) {
       toast.error(error || "Login failed. Please try again.");
     }

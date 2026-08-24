@@ -7,14 +7,16 @@ interface AuthState {
   accessToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  isInitialized: boolean;
   error: string | null;
-  
+
   // Actions
   login: (credentials: LoginRequest) => Promise<void>;
   register: (data: RegisterRequest) => Promise<void>;
   logout: () => Promise<void>;
   fetchCurrentUser: () => Promise<void>;
-  refreshAccessToken: () => Promise<void>;
+  refreshAccessToken: () => Promise<string>;
+  initializeAuth: () => Promise<void>;
   forgotPassword: (email: string) => Promise<void>;
   resetPassword: (token: string, password: string) => Promise<void>;
   clearError: () => void;
@@ -25,6 +27,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   accessToken: null,
   isAuthenticated: false,
   isLoading: false,
+  isInitialized: false,
   error: null,
 
   login: async (credentials: LoginRequest) => {
@@ -32,7 +35,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await api.login(credentials);
       const { user, accessToken } = response.data;
-      
+
       set({
         user,
         accessToken,
@@ -67,15 +70,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await api.logout();
-      set({
-        user: null,
-        accessToken: null,
-        isAuthenticated: false,
-        isLoading: false,
-        error: null,
-      });
     } catch (error) {
-      // Even if logout fails, clear local state
+      // Even if the network call fails, clear local state below
+    } finally {
       set({
         user: null,
         accessToken: null,
@@ -97,7 +94,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const response = await api.getCurrentUser();
       set({
-        user: response.data,
+        user: response.data.user ?? response.data,
         isAuthenticated: true,
         isLoading: false,
         error: null,
@@ -110,37 +107,53 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         isLoading: false,
         error: null,
       });
+      throw error;
     }
   },
 
+  // Uses the httpOnly refresh cookie to get a new access token.
+  // Does NOT call logout() on failure — callers decide what to do
+  // (e.g. initializeAuth treats failure as "not logged in", silently).
   refreshAccessToken: async () => {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error('Token refresh failed');
+    }
+
+    const data = await response.json();
+    if (!data.success || !data.data?.accessToken) {
+      throw new Error('Invalid refresh response');
+    }
+
+    set({
+      accessToken: data.data.accessToken,
+      isAuthenticated: true,
+    });
+
+    return data.data.accessToken as string;
+  },
+
+  // Call once on app startup (root component mount).
+  // Tries to silently restore a session from the refresh cookie.
+  initializeAuth: async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/refresh`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error('Token refresh failed');
-      }
-
-      const data = await response.json();
-      if (data.success && data.data.accessToken) {
-        set({
-          accessToken: data.data.accessToken,
-          isAuthenticated: true,
-        });
-        return data.data.accessToken;
-      } else {
-        throw new Error('Invalid refresh response');
-      }
+      await get().refreshAccessToken();
+      await get().fetchCurrentUser();
     } catch (error) {
-      // Refresh failed, logout the user
-      get().logout();
-      throw error;
+      set({
+        user: null,
+        accessToken: null,
+        isAuthenticated: false,
+      });
+    } finally {
+      set({ isInitialized: true });
     }
   },
 

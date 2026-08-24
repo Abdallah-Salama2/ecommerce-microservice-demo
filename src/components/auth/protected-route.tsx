@@ -9,15 +9,19 @@ interface ProtectedRouteProps {
 
 export function ProtectedRoute({ children, redirectTo = "/login" }: ProtectedRouteProps) {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading } = useAuthStore();
+  const { isAuthenticated, isInitialized } = useAuthStore();
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    // Wait until the initial silent-refresh attempt (on app load) has
+    // resolved before deciding to redirect. Without this check, a
+    // logged-in user gets bounced to /login on every reload because
+    // isAuthenticated is briefly false while the refresh call is in flight.
+    if (isInitialized && !isAuthenticated) {
       navigate({ to: redirectTo, search: { redirect: window.location.pathname } });
     }
-  }, [isAuthenticated, isLoading, navigate, redirectTo]);
+  }, [isAuthenticated, isInitialized, navigate, redirectTo]);
 
-  if (isLoading) {
+  if (!isInitialized) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <p className="text-muted-foreground">Loading...</p>
