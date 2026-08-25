@@ -30,7 +30,7 @@ export const Route = createFileRoute("/")({
 });
 
 function HomePage() {
-  const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts({ limit: 8 });
+  const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts({ page: 1, limit: 8 });
   const { data: categoriesData, isLoading: categoriesLoading, error: categoriesError } = useCategories();
 
   const products = productsData?.data || [];
@@ -71,6 +71,37 @@ function HomePage() {
       </div>
     );
   }
+
+  // Helper function to get category image - checks all nested subcategories
+  const getCategoryImage = (category: Category) => {
+    // Collect all category IDs including nested children
+    const getAllCategoryIds = (cat: Category): number[] => {
+      const ids = [cat.id];
+      cat.children.forEach(child => {
+        ids.push(...getAllCategoryIds(child));
+      });
+      return ids;
+    };
+
+    const categoryIds = getAllCategoryIds(category);
+    const categoryProducts = products.filter(p => categoryIds.includes(p.categoryId));
+
+    if (categoryProducts.length > 0) {
+      const randomProduct = categoryProducts[Math.floor(Math.random() * categoryProducts.length)];
+      return randomProduct.thumbnailUrl;
+    }
+
+    // Fallback: if no products, try to use a category-specific placeholder based on slug
+    const categoryImages: Record<string, string> = {
+      'electronics': 'https://images.unsplash.com/photo-1498049794561-7780e7231661?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDI0MjYzfDB8MXxzZWFyY2h8MXx8ZWxlY3Ryb25pY3N8ZW58MHwyfHx8MTc4NzU5ODU4N3ww&ixlib=rb-4.1.0&q=80&w=400',
+      'fashion': 'https://images.unsplash.com/photo-1445205170230-053b83016050?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDI0MjYzfDB8MXxzZWFyY2h8MXx8ZmFzaGlvbiUyMGNsb3RoaW5nfGVufDB8Mnx8fDE3ODc1OTg1ODh8MA&ixlib=rb-4.1.0&q=80&w=400',
+      'home-kitchen': 'https://images.unsplash.com/photo-1556909114-f6e7ad7d3136?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDI0MjYzfDB8MXxzZWFyY2h8MXx8aG9tZSUyMGtpdGNoZW58ZW58MHwyfHx8MTc4NzU5ODU4OXww&ixlib=rb-4.1.0&q=80&w=400',
+      'sports-outdoors': 'https://images.unsplash.com/photo-1517649763962-0c623066013b?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDI0MjYzfDB8MXxzZWFyY2h8MXx8c3BvcnRzJTIwb3V0ZG9vcnN8ZW58MHwyfHx8MTc4NzU5ODU5MXww&ixlib=rb-4.1.0&q=80&w=400',
+      'toys-games': 'https://images.unsplash.com/photo-1558060370-d644479cb6b7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDI0MjYzfDB8MXxzZWFyY2h8MXx8dG95cyUyMGdhbWVzfGVufDB8Mnx8fDE3ODc1OTg1OTJ8MA&ixlib=rb-4.1.0&q=80&w=400',
+    };
+
+    return categoryImages[category.slug] || null;
+  };
 
   return (
     <>
@@ -134,25 +165,40 @@ function HomePage() {
           }
         />
         <div className="mt-12 grid grid-cols-1 gap-x-8 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
-          {categories.slice(0, 4).map((cat) => (
-            <Link
-              key={cat.id}
-              to="/shop"
-              className="group block focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-            >
-              <div className="overflow-hidden bg-surface">
-                <div className="aspect-[4/5] w-full bg-muted flex items-center justify-center">
-                  <span className="text-muted-foreground text-sm">{cat.name}</span>
+          {categories.slice(0, 4).map((cat) => {
+            const categoryImage = getCategoryImage(cat);
+
+            return (
+              <Link
+                key={cat.id}
+                to="/category/$slug"
+                params={{ slug: cat.slug }}
+                className="group block focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+              >
+                <div className="overflow-hidden bg-surface">
+                  {categoryImage ? (
+                    <img
+                      src={categoryImage}
+                      alt={cat.name}
+                      width={1024}
+                      height={1280}
+                      className="aspect-[4/5] w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                    />
+                  ) : (
+                    <div className="aspect-[4/5] w-full bg-muted flex items-center justify-center">
+                      <span className="text-muted-foreground text-sm">{cat.name}</span>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <h3 className="mt-5 font-display text-xl font-normal tracking-tight transition-colors group-hover:text-primary">
-                {cat.name}
-              </h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                {cat.children.length > 0 ? `${cat.children.length} subcategories` : "Browse products"}
-              </p>
-            </Link>
-          ))}
+                <h3 className="mt-5 font-display text-xl font-normal tracking-tight transition-colors group-hover:text-primary">
+                  {cat.name}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {cat.children.length > 0 ? `${cat.children.length} subcategories` : "Browse products"}
+                </p>
+              </Link>
+            );
+          })}
         </div>
       </Container>
 
@@ -174,6 +220,7 @@ function HomePage() {
               product={product}
               categoryName={getCategoryName(product.categoryId)}
               priority
+              showAddToCart
             />
           ))}
         </div>

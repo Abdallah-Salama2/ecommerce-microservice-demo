@@ -1,8 +1,12 @@
 import { Link } from "@tanstack/react-router";
+import { Button } from "@/components/ui/button";
 import { PriceTag } from "@/components/ui/price-tag";
 import { StockBadge, SaleBadge } from "@/components/storefront/stock-badge";
 import type { Product } from "@/types";
 import { cn } from "@/lib/utils";
+import { useAddToCart } from "@/hooks/use-api";
+import { getProductIdNumber } from "@/types";
+import { toast } from "sonner";
 
 /**
  * ProductCard — reusable across home, catalog, related, and future pages.
@@ -13,14 +17,33 @@ export function ProductCard({
   categoryName,
   priority = false,
   className,
+  showAddToCart = false,
 }: {
   product: Product;
   categoryName?: string;
   priority?: boolean;
   className?: string;
+  showAddToCart?: boolean;
 }) {
   const imageUrl = product.thumbnailUrl || "/placeholder.jpg";
   const onSale = false; // API doesn't provide compareAt price
+  const isOutOfStock = product.stockQuantity === 0;
+  const addToCart = useAddToCart();
+
+  const handleAddToCart = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      await addToCart.mutateAsync({
+        productId: getProductIdNumber(product),
+        quantity: 1,
+      });
+      toast.success(`Added ${product.name} to cart`);
+    } catch (error) {
+      toast.error("Failed to add item to cart");
+    }
+  };
 
   return (
     <article className={cn("group relative flex flex-col", className)}>
@@ -31,19 +54,30 @@ export function ProductCard({
         aria-label={product.name}
       >
         <div className="relative overflow-hidden bg-surface">
-          <img
-            src={imageUrl}
-            alt={product.name}
-            width={1024}
-            height={1024}
-            loading={priority ? "eager" : "lazy"}
-            className="aspect-square w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
-          />
+          {product.thumbnailUrl ? (
+            <img
+              src={imageUrl}
+              alt={product.name}
+              width={1024}
+              height={1024}
+              loading={priority ? "eager" : "lazy"}
+              className="aspect-square w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+            />
+          ) : (
+            <div className="aspect-square w-full bg-muted flex items-center justify-center">
+              <span className="text-muted-foreground text-sm">No image</span>
+            </div>
+          )}
           {onSale ? (
             <span className="absolute left-4 top-4">
               <SaleBadge />
             </span>
           ) : null}
+          {isOutOfStock && (
+            <span className="absolute left-4 top-4">
+              <StockBadge stock={0} showCount={false} />
+            </span>
+          )}
 
           {/* price tag chip — signature element */}
           <span className="absolute bottom-4 right-4">
@@ -65,8 +99,20 @@ export function ProductCard({
           </h3>
           {categoryName && <p className="rule-label mt-2">{categoryName}</p>}
         </div>
-        <StockBadge stock={product.stockQuantity} showCount={false} />
+        {!isOutOfStock && <StockBadge stock={product.stockQuantity} showCount={false} />}
       </div>
+
+      {showAddToCart && !isOutOfStock && (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="mt-4 w-full"
+          onClick={handleAddToCart}
+          disabled={addToCart.isPending}
+        >
+          {addToCart.isPending ? "Adding..." : "Add to cart"}
+        </Button>
+      )}
     </article>
   );
 }

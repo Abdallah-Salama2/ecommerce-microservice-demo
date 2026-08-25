@@ -1,4 +1,5 @@
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Select, Field } from "@/components/ui/field";
 import { PriceTag } from "@/components/ui/price-tag";
@@ -7,7 +8,9 @@ import { Container, SectionHeading } from "@/components/storefront/section";
 import { ProductCard } from "@/components/storefront/product-card";
 import { StockBadge } from "@/components/storefront/stock-badge";
 import { ContentCard } from "@/components/storefront/content-card";
-import { useProduct, useProducts, useCategories } from "@/hooks/use-api";
+import { useProduct, useProducts, useCategories, useAddToCart } from "@/hooks/use-api";
+import { getProductIdNumber } from "@/types";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/product/$slug")({
   head: () => ({
@@ -28,6 +31,10 @@ function ProductPage() {
   const { data: product, isLoading: productLoading, error: productError } = useProduct(slug);
   const { data: productsData } = useProducts({ limit: 12 });
   const { data: categoriesData } = useCategories();
+  const addToCart = useAddToCart();
+
+  const [quantity, setQuantity] = useState(1);
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
 
   // Update document title dynamically
   if (product) {
@@ -58,6 +65,21 @@ function ProductPage() {
       .slice(0, 3)
     : [];
 
+  // Handle add to cart
+  const handleAddToCart = async () => {
+    if (!product) return;
+
+    try {
+      await addToCart.mutateAsync({
+        productId: getProductIdNumber(product),
+        quantity,
+      });
+      toast.success(`Added ${quantity} ${product.name} to cart`);
+    } catch (error) {
+      toast.error("Failed to add item to cart");
+    }
+  };
+
   if (productLoading) {
     return (
       <Container className="py-10 sm:py-16">
@@ -82,6 +104,9 @@ function ProductPage() {
   const categoryName = getCategoryName(product.categoryId);
   const imageUrl = product.thumbnailUrl || "/placeholder.jpg";
 
+  // For image gallery, we'll use the main image and create placeholders for additional views
+  const images = [imageUrl, imageUrl, imageUrl]; // In a real app, this would be different images
+
   return (
     <Container className="py-10 sm:py-16">
       <nav aria-label="Breadcrumb" className="flex items-center gap-2">
@@ -97,7 +122,7 @@ function ProductPage() {
         <div className="flex flex-col gap-4">
           <div className="relative bg-surface">
             <img
-              src={imageUrl}
+              src={images[selectedImageIndex]}
               alt={product.name}
               width={1024}
               height={1024}
@@ -106,6 +131,27 @@ function ProductPage() {
             <span className="absolute bottom-5 right-5">
               <PriceTag amount={product.price} size="lg" />
             </span>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            {images.map((src, i) => (
+              <button
+                key={i}
+                type="button"
+                onClick={() => setSelectedImageIndex(i)}
+                aria-label={`View image ${i + 1}`}
+                className={`bg-surface transition-opacity hover:opacity-80 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${selectedImageIndex === i ? 'ring-2 ring-primary' : ''
+                  }`}
+              >
+                <img
+                  src={src}
+                  alt=""
+                  width={1024}
+                  height={1024}
+                  loading="lazy"
+                  className="aspect-square w-full object-cover"
+                />
+              </button>
+            ))}
           </div>
         </div>
 
@@ -122,24 +168,32 @@ function ProductPage() {
           </div>
 
           <p className="mt-8 text-base leading-relaxed text-muted-foreground">
-            Quality product carefully selected for our collection.
-          </p>
+            {product.description}          </p>
 
           <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-end">
             <Field label="Quantity" htmlFor="pdp-qty" className="sm:w-28">
               <Select
                 id="pdp-qty"
-                defaultValue="1"
+                value={quantity.toString()}
+                onChange={(e) => setQuantity(parseInt(e.target.value))}
                 disabled={soldOut}
                 options={[
                   { value: "1", label: "1" },
                   { value: "2", label: "2" },
                   { value: "3", label: "3" },
+                  { value: "4", label: "4" },
+                  { value: "5", label: "5" },
                 ]}
               />
             </Field>
-            <Button variant="primary" size="lg" disabled={soldOut} className="flex-1">
-              {soldOut ? "Sold out" : "Add to bag"}
+            <Button
+              variant="primary"
+              size="lg"
+              disabled={soldOut || addToCart.isPending}
+              className="flex-1"
+              onClick={handleAddToCart}
+            >
+              {soldOut ? "Sold out" : addToCart.isPending ? "Adding..." : "Add to bag"}
             </Button>
           </div>
 

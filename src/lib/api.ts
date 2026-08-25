@@ -8,6 +8,7 @@ import type {
   AuthResponse,
   RegisterResponse,
   CartItem,
+  Cart,
   Order,
   Address,
   ApiError,
@@ -133,13 +134,13 @@ class ApiClient {
     page?: number;
     limit?: number;
     categoryId?: number;
-    search?: string;
+    searchTerm?: string;
   }): Promise<PaginatedResponse<Product>> {
     const queryParams = new URLSearchParams();
     if (params?.page) queryParams.append("page", params.page.toString());
     if (params?.limit) queryParams.append("limit", params.limit.toString());
     if (params?.categoryId) queryParams.append("categoryId", params.categoryId.toString());
-    if (params?.search) queryParams.append("search", params.search);
+    if (params?.searchTerm) queryParams.append("searchTerm", params.searchTerm);
 
     const endpoint = `/products${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
     return this.request<PaginatedResponse<Product>>(endpoint);
@@ -162,6 +163,25 @@ class ApiClient {
 
   async getCategory(id: number): Promise<Category> {
     return this.request<Category>(`/categories/${id}`);
+  }
+
+  async getCategoryBySlug(slug: string): Promise<Category> {
+    const response = await this.request<{ success: boolean; data: Category[]; message: string }>("/categories");
+    // Check both main categories and subcategories
+    let category = response.data.find(c => c.slug === slug);
+    if (!category) {
+      for (const cat of response.data) {
+        const subCat = cat.children.find(c => c.slug === slug);
+        if (subCat) {
+          category = subCat;
+          break;
+        }
+      }
+    }
+    if (!category) {
+      throw new Error("Category not found");
+    }
+    return category;
   }
 
   // Auth
@@ -190,42 +210,64 @@ class ApiClient {
   }
 
   // Cart
-  async getCart(): Promise<{ success: boolean; data: CartItem[]; message: string }> {
-    return this.request<{ success: boolean; data: CartItem[]; message: string }>("/cart");
+  async getCart(): Promise<{ success: boolean; data: Cart; message: string }> {
+    return this.request<{ success: boolean; data: Cart; message: string }>("/cart");
   }
 
-  async addToCart(productId: string, quantity: number): Promise<{
+  async addToCart(productId: number, quantity: number): Promise<{
     success: boolean;
-    data: CartItem;
+    data: Cart;
     message: string;
   }> {
     return this.request<{
       success: boolean;
-      data: CartItem;
+      data: Cart;
       message: string;
-    }>("/cart", {
+    }>("/cart/items", {
       method: "POST",
       body: JSON.stringify({ productId, quantity }),
     });
   }
 
-  async updateCartItem(itemId: string, quantity: number): Promise<{
+  async updateCartItem(cartItemId: string, quantity: number): Promise<{
     success: boolean;
-    data: CartItem;
+    data: Cart;
     message: string;
   }> {
     return this.request<{
       success: boolean;
-      data: CartItem;
+      data: Cart;
       message: string;
-    }>(`/cart/${itemId}`, {
-      method: "PUT",
+    }>(`/cart/items/${cartItemId}`, {
+      method: "PATCH",
       body: JSON.stringify({ quantity }),
     });
   }
 
-  async removeFromCart(itemId: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/cart/${itemId}`, {
+  async removeFromCart(cartItemId: string): Promise<{
+    success: boolean;
+    data: Cart;
+    message: string;
+  }> {
+    return this.request<{
+      success: boolean;
+      data: Cart;
+      message: string;
+    }>(`/cart/items/${cartItemId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async clearCart(): Promise<{
+    success: boolean;
+    data: Cart;
+    message: string;
+  }> {
+    return this.request<{
+      success: boolean;
+      data: Cart;
+      message: string;
+    }>("/cart", {
       method: "DELETE",
     });
   }
@@ -239,9 +281,15 @@ class ApiClient {
     return this.request<{ success: boolean; data: Order; message: string }>(`/orders/${id}`);
   }
 
+  async cancelOrder(id: string): Promise<{ success: boolean; data: Order; message: string }> {
+    return this.request<{ success: boolean; data: Order; message: string }>(`/orders/${id}/cancel`, {
+      method: "PATCH",
+    });
+  }
+
   async createOrder(data: {
-    shippingAddress: Address;
-    items: { productId: string; quantity: number }[];
+    addressId: number;
+    idempotencyKey: string;
   }): Promise<{ success: boolean; data: Order; message: string }> {
     return this.request<{ success: boolean; data: Order; message: string }>("/orders", {
       method: "POST",

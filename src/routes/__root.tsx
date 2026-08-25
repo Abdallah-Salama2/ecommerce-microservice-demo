@@ -13,8 +13,8 @@ import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { SiteHeader } from "../components/storefront/site-header";
 import { SiteFooter } from "../components/storefront/site-footer";
+import { Toaster } from "../components/ui/sonner";
 import { useAuthStore } from "../store/auth";
-import { Toaster } from "sonner";
 
 function NotFoundComponent() {
   return (

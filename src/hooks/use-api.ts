@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuthStore } from "@/store/auth";
 import type {
   Product,
   Category,
@@ -7,6 +8,7 @@ import type {
   RegisterRequest,
   LoginRequest,
   CartItem,
+  Cart,
   Order,
   Address,
 } from "@/types";
@@ -16,7 +18,7 @@ export function useProducts(params?: {
   page?: number;
   limit?: number;
   categoryId?: number;
-  search?: string;
+  searchTerm?: string;
 }) {
   return useQuery({
     queryKey: ["products", params],
@@ -46,6 +48,14 @@ export function useCategory(id: number) {
     queryKey: ["category", id],
     queryFn: () => api.getCategory(id),
     enabled: !!id,
+  });
+}
+
+export function useCategoryBySlug(slug: string) {
+  return useQuery({
+    queryKey: ["category", slug],
+    queryFn: () => api.getCategoryBySlug(slug),
+    enabled: !!slug,
   });
 }
 
@@ -95,9 +105,14 @@ export function useCurrentUser() {
 
 // Cart
 export function useCart() {
+  const isAuthInitialized = useAuthStore((state) => state.isInitialized);
+
   return useQuery({
     queryKey: ["cart"],
     queryFn: () => api.getCart(),
+    staleTime: 0, // Always fetch fresh data
+    refetchOnWindowFocus: true,
+    enabled: isAuthInitialized, // Only fetch cart after auth is initialized
   });
 }
 
@@ -105,10 +120,11 @@ export function useAddToCart() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ productId, quantity }: { productId: string; quantity: number }) =>
+    mutationFn: ({ productId, quantity }: { productId: number; quantity: number }) =>
       api.addToCart(productId, quantity),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart"] });
+      queryClient.refetchQueries({ queryKey: ["cart"] });
     },
   });
 }
@@ -117,10 +133,11 @@ export function useUpdateCartItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ itemId, quantity }: { itemId: string; quantity: number }) =>
-      api.updateCartItem(itemId, quantity),
+    mutationFn: ({ cartItemId, quantity }: { cartItemId: string; quantity: number }) =>
+      api.updateCartItem(cartItemId, quantity),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart"] });
+      queryClient.refetchQueries({ queryKey: ["cart"] });
     },
   });
 }
@@ -129,9 +146,22 @@ export function useRemoveFromCart() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (itemId: string) => api.removeFromCart(itemId),
+    mutationFn: (cartItemId: string) => api.removeFromCart(cartItemId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart"] });
+      queryClient.refetchQueries({ queryKey: ["cart"] });
+    },
+  });
+}
+
+export function useClearCart() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => api.clearCart(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["cart"] });
+      queryClient.refetchQueries({ queryKey: ["cart"] });
     },
   });
 }
@@ -157,12 +187,25 @@ export function useCreateOrder() {
 
   return useMutation({
     mutationFn: (data: {
-      shippingAddress: Address;
-      items: { productId: string; quantity: number }[];
+      addressId: number;
+      idempotencyKey: string;
     }) => api.createOrder(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
       queryClient.invalidateQueries({ queryKey: ["cart"] });
+      queryClient.refetchQueries({ queryKey: ["cart"] });
+    },
+  });
+}
+
+export function useCancelOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: string) => api.cancelOrder(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order"] });
     },
   });
 }

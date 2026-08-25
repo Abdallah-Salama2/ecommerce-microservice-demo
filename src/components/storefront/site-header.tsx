@@ -1,17 +1,18 @@
 import { useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Search, ShoppingBag, Menu, User, LogOut } from "lucide-react";
+import { Search, ShoppingBag, Menu, User, LogOut, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/panel";
 import { Container } from "@/components/storefront/section";
 import { MiniCartContents, MiniCartFooter } from "@/components/storefront/mini-cart";
 import { useAuthStore } from "@/store/auth";
+import { useCart } from "@/hooks/use-api";
 import { toast } from "sonner";
 const nav = [
   { to: "/shop", label: "Shop all" },
-  { to: "/shop", label: "Electronics" },
-  { to: "/shop", label: "Books" },
-  { to: "/shop", label: "Home" },
+  { to: "/categories", label: "Categories" },
+  { to: "/", label: "Home" },
+  { to: "/about", label: "About us" },
 ];
 
 export function SiteHeader() {
@@ -19,6 +20,9 @@ export function SiteHeader() {
   const [menuOpen, setMenuOpen] = useState(false);
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
+  const { data: cartData } = useCart();
+  const cart = cartData?.data;
+  const itemCount = cart?.itemCount || 0;
 
   // FIX: Make admin check reactive by deriving it directly from the reactive 'user' state
   const isUserAdmin = user?.roles?.includes('Admin') || false;
@@ -52,21 +56,36 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" aria-label="Search">
+          <Button variant="ghost" size="icon" aria-label="Search" onClick={() => navigate({ to: "/search" })}>
             <Search />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Open cart" onClick={() => setCartOpen(true)}>
+          <Button variant="ghost" size="icon" aria-label="Open cart" onClick={() => setCartOpen(true)} className="relative">
             <ShoppingBag />
+            {itemCount > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
+                {itemCount}
+              </span>
+            )}
           </Button>
 
           {isAuthenticated ? (
             <>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label="Dashboard"
+                onClick={() => navigate({ to: "/dashboard" })}
+                title="Dashboard"
+              >
+                <LayoutDashboard />
+              </Button>
               {isUserAdmin && (
                 <Button
                   variant="ghost"
                   size="icon"
                   aria-label="Admin dashboard"
                   onClick={() => navigate({ to: "/admin" })}
+                  title="Admin Dashboard"
                 >
                   <User />
                 </Button>
@@ -107,7 +126,7 @@ export function SiteHeader() {
         open={cartOpen}
         onOpenChange={setCartOpen}
         title="Your bag"
-        description="Two items held for 30 minutes."
+        description={`${itemCount} item${itemCount !== 1 ? 's' : ''} in your cart`}
         footer={<MiniCartFooter />}
       >
         <MiniCartContents />
@@ -129,6 +148,13 @@ export function SiteHeader() {
             {isAuthenticated ? (
               <>
                 <p className="rule-label mb-4">Signed in as {user?.firstName}</p>
+                <Link
+                  to="/dashboard"
+                  onClick={() => setMenuOpen(false)}
+                  className="block py-2 font-display text-xl tracking-tight transition-colors hover:text-primary"
+                >
+                  Dashboard
+                </Link>
                 {isUserAdmin && (
                   <Link
                     to="/admin"

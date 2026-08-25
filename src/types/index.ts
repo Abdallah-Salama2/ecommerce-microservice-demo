@@ -22,11 +22,17 @@ export interface Category {
 export interface Product {
   id: string;
   name: string;
+  description: string;
   slug: string;
   price: number;
   stockQuantity: number;
   categoryId: number;
   thumbnailUrl: string | null;
+}
+
+// Helper to convert string ID to number for cart API
+export function getProductIdNumber(product: Product): number {
+  return parseInt(product.id, 10);
 }
 
 export interface User {
@@ -39,39 +45,60 @@ export interface User {
 }
 
 export interface CartItem {
-  id: string;
+  cartId: string;
+  cartItemId: string;
   productId: string;
   quantity: number;
-  product?: Product;
+  productName: string;
+  productSlug: string;
+  price: number;
+  stockQuantity: number;
+  isActive: boolean;
+  thumbnailUrl: string | null;
+  isOverStock: boolean;
+}
+
+export interface Cart {
+  cartId: string;
+  items: CartItem[];
+  subtotal: number | null;
+  itemCount: number | null;
 }
 
 export interface Address {
   id: string;
-  street: string;
+  label?: string;
+  fullName: string;
+  phone: string;
+  line1: string;
+  line2?: string;
   city: string;
-  state: string;
-  zipCode: string;
+  governorate: string;
   country: string;
+  postalCode?: string;
   isDefault: boolean;
 }
 
 export interface Order {
   id: string;
   userId: string;
-  items: OrderItem[];
-  total: number;
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
-  shippingAddress: Address;
+  status: 'Pending' | 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled';
+  subtotal?: number;
+  totalAmount: number;
+  itemCount?: number;
   createdAt: string;
   updatedAt: string;
+  items?: OrderItem[];
 }
 
 export interface OrderItem {
   id: string;
+  orderId: string;
   productId: string;
+  productTitle: string;
   quantity: number;
-  price: number;
-  product?: Product;
+  unitPrice: number;
+  totalPrice: number;
 }
 
 // Auth Types
