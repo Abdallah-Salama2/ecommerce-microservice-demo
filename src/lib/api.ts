@@ -146,14 +146,11 @@ class ApiClient {
     return this.request<PaginatedResponse<Product>>(endpoint);
   }
 
-  async getProduct(slug: string): Promise<Product> {
-    // First try to get all products and find by slug
-    const response = await this.request<PaginatedResponse<Product>>("/products");
-    const product = response.data.find(p => p.slug === slug);
-    if (!product) {
-      throw new Error("Product not found");
-    }
-    return product;
+  async getProduct(slugOrId: string): Promise<Product> {
+    const response = await this.request<{ success: boolean; data: Product; message: string }>(
+      `/products/${slugOrId}`
+    );
+    return response.data;
   }
 
   // Categories
@@ -336,6 +333,180 @@ class ApiClient {
     return this.request<{ success: boolean; message: string }>(`/addresses/${id}`, {
       method: "DELETE",
     });
+  }
+
+  // Admin
+  async getAdminOrders(params?: {
+    page?: number;
+    limit?: number;
+    status?: string;
+  }): Promise<PaginatedResponse<Order>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    if (params?.status) queryParams.append("status", params.status);
+    const qs = queryParams.toString();
+    return this.request<PaginatedResponse<Order>>(`/orders/admin${qs ? `?${qs}` : ""}`);
+  }
+
+  async getAdminProducts(params?: {
+    page?: number;
+    limit?: number;
+    searchTerm?: string;
+  }): Promise<PaginatedResponse<Product>> {
+    const queryParams = new URLSearchParams();
+    if (params?.page) queryParams.append("page", params.page.toString());
+    if (params?.limit) queryParams.append("limit", params.limit.toString());
+    if (params?.searchTerm) queryParams.append("searchTerm", params.searchTerm);
+    const qs = queryParams.toString();
+    return this.request<PaginatedResponse<Product>>(`/products/admin${qs ? `?${qs}` : ""}`);
+  }
+
+  // Category Management
+  async createCategory(data: {
+    name: string;
+    slug: string;
+    parentId?: number | null;
+  }): Promise<{ success: boolean; data: Category; message: string }> {
+    return this.request<{ success: boolean; data: Category; message: string }>("/categories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateCategory(
+    id: number,
+    data: { name?: string; slug?: string; parentId?: number | null }
+  ): Promise<{ success: boolean; data: Category; message: string }> {
+    return this.request<{ success: boolean; data: Category; message: string }>(`/categories/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteCategory(id: number): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/categories/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  // Order Status Update Workstation
+  async updateOrderStatus(
+    id: string,
+    newStatus: string
+  ): Promise<{ success: boolean; data: Order; message: string }> {
+    return this.request<{ success: boolean; data: Order; message: string }>(`/orders/${id}/status`, {
+      method: "PUT",
+      body: JSON.stringify({ newStatus }),
+    });
+  }
+
+  // Product CRUD & Image Management
+  private async requestFormData<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+    const token = getAccessToken();
+    const headers: HeadersInit = { ...options.headers };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      credentials: "include",
+      headers,
+    });
+
+    return this.processResponse<T>(response);
+  }
+
+  async createProduct(data: {
+    name: string;
+    slug: string;
+    description: string;
+    price: number;
+    stockQuantity: number;
+    categoryId: number;
+  }): Promise<{ success: boolean; data: Product; message: string }> {
+    return this.request<{ success: boolean; data: Product; message: string }>("/products", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateProduct(
+    id: number | string,
+    data: {
+      name?: string;
+      slug?: string;
+      description?: string;
+      price?: number;
+      stockQuantity?: number;
+      categoryId?: number;
+    }
+  ): Promise<{ success: boolean; data: Product; message: string }> {
+    return this.request<{ success: boolean; data: Product; message: string }>(`/products/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteProduct(id: number | string): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(`/products/${id}`, {
+      method: "DELETE",
+    });
+  }
+
+  async uploadProductImage(
+    id: number | string,
+    file: File
+  ): Promise<{ success: boolean; data: Product; message: string }> {
+    const formData = new FormData();
+    formData.append("image", file);
+    return this.requestFormData<{ success: boolean; data: Product; message: string }>(
+      `/products/${id}/images`,
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+  }
+
+  async deleteProductImage(
+    id: number | string,
+    imageId: number | string
+  ): Promise<{ success: boolean; message: string }> {
+    return this.request<{ success: boolean; message: string }>(
+      `/products/${id}/images/${imageId}`,
+      {
+        method: "DELETE",
+      }
+    );
+  }
+
+  async setPrimaryProductImage(
+    id: number | string,
+    imageId: number | string
+  ): Promise<{ success: boolean; data: Product; message: string }> {
+    return this.request<{ success: boolean; data: Product; message: string }>(
+      `/products/${id}/images/${imageId}/primary`,
+      {
+        method: "PATCH",
+      }
+    );
+  }
+
+  async restoreProduct(
+    id: number | string
+  ): Promise<{ success: boolean; data: Product; message: string }> {
+    return this.request<{ success: boolean; data: Product; message: string }>(
+      `/products/${id}/restore`,
+      {
+        method: "PATCH",
+      }
+    );
   }
 }
 

@@ -32,6 +32,8 @@ export function useProduct(slug: string) {
     queryFn: () => api.getProduct(slug),
     enabled: !!slug,
     retry: false,
+    refetchOnWindowFocus: true, // Refetch when window regains focus
+    refetchOnMount: true, // Always refetch on mount
   });
 }
 
@@ -111,6 +113,8 @@ export function useCart() {
     queryKey: ["cart"],
     queryFn: () => api.getCart(),
     staleTime: 0, // Always fetch fresh data
+    gcTime: 0, // Prevent retaining stale cached cart snapshots in memory
+    refetchOnMount: "always", // Always fetch fresh server state on page/component mount
     refetchOnWindowFocus: true,
     enabled: isAuthInitialized, // Only fetch cart after auth is initialized
   });
@@ -212,9 +216,11 @@ export function useCancelOrder() {
 
 // Addresses
 export function useAddresses() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   return useQuery({
     queryKey: ["addresses"],
     queryFn: () => api.getAddresses(),
+    enabled: isAuthenticated,
   });
 }
 
@@ -248,6 +254,201 @@ export function useDeleteAddress() {
     mutationFn: (id: string) => api.deleteAddress(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["addresses"] });
+    },
+  });
+}
+
+// Admin
+export function useAdminOrders(params?: { page?: number; limit?: number; status?: string }) {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  return useQuery({
+    queryKey: ["admin-orders", params],
+    queryFn: () => api.getAdminOrders(params),
+    enabled: isAuthenticated,
+  });
+}
+
+export function useAdminProducts(params?: { page?: number; limit?: number; searchTerm?: string }) {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  return useQuery({
+    queryKey: ["admin-products", params],
+    queryFn: () => api.getAdminProducts(params),
+    enabled: isAuthenticated,
+  });
+}
+
+export function useCreateCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { name: string; slug: string; parentId?: number | null }) =>
+      api.createCategory(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
+export function useUpdateCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: number;
+      data: { name?: string; slug?: string; parentId?: number | null };
+    }) => api.updateCategory(id, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
+export function useDeleteCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => api.deleteCategory(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
+export function useUpdateOrderStatus() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, newStatus }: { id: string; newStatus: string }) =>
+      api.updateOrderStatus(id, newStatus),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["order", variables.id] });
+    },
+  });
+}
+
+// Product Management Hooks
+export function useCreateProduct() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: {
+      name: string;
+      slug: string;
+      description: string;
+      price: number;
+      stockQuantity: number;
+      categoryId: number;
+    }) => api.createProduct(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+    },
+  });
+}
+
+export function useUpdateProduct() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      id,
+      data,
+    }: {
+      id: number | string;
+      data: {
+        name?: string;
+        slug?: string;
+        description?: string;
+        price?: number;
+        stockQuantity?: number;
+        categoryId?: number;
+      };
+    }) => api.updateProduct(id, data),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+      queryClient.invalidateQueries({ queryKey: ["product", String(variables.id)] });
+    },
+  });
+}
+
+export function useDeleteProduct() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number | string) => api.deleteProduct(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+    },
+  });
+}
+
+export function useUploadProductImage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, file }: { id: number | string; file: File }) =>
+      api.uploadProductImage(id, file),
+    onSuccess: async (_, variables) => {
+      // Clear cache to prevent stale data from Redis
+      queryClient.clear();
+      // Force refetch to ensure fresh data from backend
+      await queryClient.refetchQueries({ queryKey: ["product", String(variables.id)] });
+    },
+  });
+}
+
+export function useDeleteProductImage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, imageId }: { id: number | string; imageId: number | string }) =>
+      api.deleteProductImage(id, imageId),
+    onSuccess: async (_, variables) => {
+      // Clear cache to prevent stale data from Redis
+      queryClient.clear();
+      // Force refetch to ensure fresh data from backend
+      await queryClient.refetchQueries({ queryKey: ["product", String(variables.id)] });
+    },
+  });
+}
+
+export function useSetPrimaryProductImage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, imageId }: { id: number | string; imageId: number | string }) =>
+      api.setPrimaryProductImage(id, imageId),
+    onSuccess: async (_, variables) => {
+      // Clear cache to prevent stale data from Redis
+      queryClient.clear();
+      // Force refetch to ensure fresh data from backend
+      await queryClient.refetchQueries({ queryKey: ["product", String(variables.id)] });
+    },
+  });
+}
+
+export function useRestoreProduct() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number | string) => api.restoreProduct(id),
+    onSuccess: async (_, variables) => {
+      // Clear cache to prevent stale data from Redis
+      queryClient.clear();
+      // Invalidate all product-related queries
+      queryClient.invalidateQueries({ queryKey: ["products"] });
+      queryClient.invalidateQueries({ queryKey: ["admin-products"] });
+      queryClient.invalidateQueries({ queryKey: ["product", String(variables)] });
+      queryClient.invalidateQueries({ queryKey: ["product"] });
+      // Force refetch to ensure fresh data from backend
+      await queryClient.refetchQueries({ queryKey: ["product", String(variables)] });
     },
   });
 }

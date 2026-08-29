@@ -19,6 +19,15 @@ export interface Category {
   children: Category[];
 }
 
+export interface ProductImage {
+  id: number | string;
+  thumbnailUrl: string;
+  previewUrl: string;
+  altText: string;
+  isPrimary: boolean;
+  sortOrder: number;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -27,7 +36,34 @@ export interface Product {
   price: number;
   stockQuantity: number;
   categoryId: number;
-  thumbnailUrl: string | null;
+  thumbnailUrl?: string | null;
+  images?: ProductImage[];
+  isActive?: boolean;
+}
+
+// Helper to get primary image or fallback for a product
+export function getProductPrimaryImage(product: Product): {
+  thumbnailUrl: string;
+  previewUrl: string;
+  altText: string;
+} {
+  if (product.images && product.images.length > 0) {
+    const sorted = [...product.images].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    const primary = sorted.find((img) => img.isPrimary) || sorted[0];
+    if (primary) {
+      return {
+        thumbnailUrl: primary.thumbnailUrl || primary.previewUrl || "/placeholder.jpg",
+        previewUrl: primary.previewUrl || primary.thumbnailUrl || "/placeholder.jpg",
+        altText: primary.altText || product.name,
+      };
+    }
+  }
+  const fallback = product.thumbnailUrl || "/placeholder.jpg";
+  return {
+    thumbnailUrl: fallback,
+    previewUrl: fallback,
+    altText: product.name,
+  };
 }
 
 // Helper to convert string ID to number for cart API
@@ -82,23 +118,27 @@ export interface Address {
 export interface Order {
   id: string;
   userId: string;
-  status: 'Pending' | 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled';
+  user?: User;
+  status: 'Pending' | 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled' | string;
   subtotal?: number;
   totalAmount: number;
   itemCount?: number;
   createdAt: string;
   updatedAt: string;
   items?: OrderItem[];
+  address?: Address;
 }
 
 export interface OrderItem {
   id: string;
   orderId: string;
-  productId: string;
-  productTitle: string;
+  productId: number | string;
+  productTitle?: string;
   quantity: number;
-  unitPrice: number;
-  totalPrice: number;
+  unitPrice?: number;
+  price: number;
+  totalPrice?: number;
+  product?: Product;
 }
 
 // Auth Types

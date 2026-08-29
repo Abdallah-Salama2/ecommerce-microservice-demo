@@ -16,9 +16,21 @@ export function SiteFooter() {
             <Link to="/shop" className="rule-label transition-colors hover:text-foreground">
               Catalog
             </Link>
-            <span className="rule-label">Care guide</span>
-            <span className="rule-label">Shipping</span>
-            <span className="rule-label">Contact</span>
+            <Link to="/shipping-policy" className="rule-label transition-colors hover:text-foreground">
+              Shipping
+            </Link>
+            <Link to="/returns" className="rule-label transition-colors hover:text-foreground">
+              Returns
+            </Link>
+            <Link to="/about" className="rule-label transition-colors hover:text-foreground">
+              Contact
+            </Link>
+            <Link to="/terms" className="rule-label transition-colors hover:text-foreground">
+              Terms
+            </Link>
+            <Link to="/privacy" className="rule-label transition-colors hover:text-foreground">
+              Privacy
+            </Link>
           </div>
         </div>
 

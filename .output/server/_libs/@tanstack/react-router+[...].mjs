@@ -1,8 +1,7 @@
 import { n as __toESM, t as __commonJSMin } from "../../_runtime.mjs";
 import { r as require_react } from "../@hookform/resolvers+[...].mjs";
-import { n as require_jsx_runtime } from "../radix-ui__react-context+react.mjs";
+import { _ as require_jsx_runtime, p as require_react_dom } from "../@radix-ui/react-accordion+[...].mjs";
 import { r as parseHref } from "../tanstack__history.mjs";
-import { l as require_react_dom } from "../@radix-ui/react-dialog+[...].mjs";
 import { PassThrough, Readable } from "node:stream";
 import { ReadableStream as ReadableStream$1 } from "node:stream/web";
 //#region node_modules/@tanstack/react-router/dist/esm/utils.js
@@ -4974,6 +4973,28 @@ function RouterProvider({ router, ...rest }) {
 		...rest,
 		children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Matches, {})
 	});
+}
+//#endregion
+//#region node_modules/@tanstack/react-router/dist/esm/useRouterState.js
+/**
+* Subscribe to the router's state store with optional selection and
+* structural sharing for render optimization.
+*
+* Options:
+* - `select`: Project the full router state to a derived slice
+* - `structuralSharing`: Replace-equal semantics for stable references
+* - `router`: Read state from a specific router instance instead of context
+*
+* @returns The selected router state (or the full state by default).
+* @link https://tanstack.com/router/latest/docs/framework/react/api/router/useRouterStateHook
+*/
+function useRouterState(opts) {
+	const contextRouter = useRouter({ warn: opts?.router === void 0 });
+	const router = opts?.router || contextRouter;
+	{
+		const state = router.stores.__store.get();
+		return opts?.select ? opts.select(state) : state;
+	}
 }
 //#endregion
 //#region node_modules/@tanstack/react-router/dist/esm/Asset.js
@@ -14188,4 +14209,4 @@ var renderRouterToStream = async ({ request, router, responseHeaders, children }
 	throw new Error("No renderToReadableStream or renderToPipeableStream found in react-dom/server. Ensure you are using a version of react-dom that supports streaming.");
 };
 //#endregion
-export { redirect as A, getScriptPreloadAttrs as C, executeRewriteInput as D, resolveManifestCssLink as E, decodePath as F, isNotFound as M, createLRUCache as N, isRedirect as O, invariant as P, createInlineCssStyleAsset as S, resolveManifestAssetLink as T, useSearch as _, replaceSsrResponse as a, TSR_SCRIPT_BARRIER_ID as b, HeadContent as c, Outlet as d, lazyRouteComponent as f, useNavigate as g, Link as h, normalizeSsrResponse as i, rootRouteId as j, isResolvedRedirect as k, RouterProvider as l, createRootRouteWithContext as m, defineHandlerCallback as n, stripSsrResponseBody as o, createFileRoute as p, isSsrResponse as r, Scripts as s, renderRouterToStream as t, createRouter as u, useRouter as v, getStylesheetHref as w, createInlineCssPlaceholderAsset as x, GLOBAL_TSR as y };
+export { redirect as A, getScriptPreloadAttrs as C, executeRewriteInput as D, resolveManifestCssLink as E, decodePath as F, isNotFound as M, createLRUCache as N, isRedirect as O, invariant as P, createInlineCssStyleAsset as S, resolveManifestAssetLink as T, useNavigate as _, replaceSsrResponse as a, TSR_SCRIPT_BARRIER_ID as b, HeadContent as c, createRouter as d, Outlet as f, Link as g, createRootRouteWithContext as h, normalizeSsrResponse as i, rootRouteId as j, isResolvedRedirect as k, useRouterState as l, createFileRoute as m, defineHandlerCallback as n, stripSsrResponseBody as o, lazyRouteComponent as p, isSsrResponse as r, Scripts as s, renderRouterToStream as t, RouterProvider as u, useRouter as v, getStylesheetHref as w, createInlineCssPlaceholderAsset as x, GLOBAL_TSR as y };

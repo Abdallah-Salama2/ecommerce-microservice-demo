@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Search, ShoppingBag, Menu, User, LogOut, LayoutDashboard } from "lucide-react";
+import { Search, Heart, ShoppingBag, Menu, User, LogOut, LayoutDashboard, Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/panel";
 import { Container } from "@/components/storefront/section";
 import { MiniCartContents, MiniCartFooter } from "@/components/storefront/mini-cart";
 import { useAuthStore } from "@/store/auth";
 import { useCart } from "@/hooks/use-api";
+import { useTheme } from "@/components/theme-provider";
 import { toast } from "sonner";
 const nav = [
   { to: "/shop", label: "Shop all" },
@@ -18,11 +19,18 @@ const nav = [
 export function SiteHeader() {
   const [cartOpen, setCartOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const navigate = useNavigate();
   const { user, isAuthenticated, logout } = useAuthStore();
   const { data: cartData } = useCart();
   const cart = cartData?.data;
   const itemCount = cart?.itemCount || 0;
+  const { theme, setTheme } = useTheme();
+
+  // Fix hydration mismatch by only rendering theme-dependent UI after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // FIX: Make admin check reactive by deriving it directly from the reactive 'user' state
   const isUserAdmin = user?.roles?.includes('Admin') || false;
@@ -59,6 +67,9 @@ export function SiteHeader() {
           <Button variant="ghost" size="icon" aria-label="Search" onClick={() => navigate({ to: "/search" })}>
             <Search />
           </Button>
+          <Button variant="ghost" size="icon" aria-label="Wishlist" onClick={() => navigate({ to: "/account/wishlist" })}>
+            <Heart />
+          </Button>
           <Button variant="ghost" size="icon" aria-label="Open cart" onClick={() => setCartOpen(true)} className="relative">
             <ShoppingBag />
             {itemCount > 0 && (
@@ -66,6 +77,14 @@ export function SiteHeader() {
                 {itemCount}
               </span>
             )}
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Toggle theme"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          >
+            {mounted ? (theme === "dark" ? <Sun /> : <Moon />) : <div className="h-5 w-5" />}
           </Button>
 
           {isAuthenticated ? (
@@ -154,6 +173,13 @@ export function SiteHeader() {
                   className="block py-2 font-display text-xl tracking-tight transition-colors hover:text-primary"
                 >
                   Dashboard
+                </Link>
+                <Link
+                  to="/account/wishlist"
+                  onClick={() => setMenuOpen(false)}
+                  className="block py-2 font-display text-xl tracking-tight transition-colors hover:text-primary"
+                >
+                  Wishlist
                 </Link>
                 {isUserAdmin && (
                   <Link

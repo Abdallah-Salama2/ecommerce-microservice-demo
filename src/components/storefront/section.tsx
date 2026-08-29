@@ -31,7 +31,7 @@ export function SectionHeading({
     >
       <div>
         {eyebrow ? <span className="rule-label">{eyebrow}</span> : null}
-        <h2 className="mt-3 max-w-2xl font-display text-3xl font-normal leading-[1.05] tracking-tight sm:text-4xl">
+        <h2 className="mt-3 max-w-2xl font-display text-4xl font-normal leading-[1.02] tracking-tight sm:text-5xl">
           {title}
         </h2>
       </div>
