@@ -12,8 +12,9 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { useAdminOrders, useAdminProducts } from "@/hooks/use-api";
-import type { Order } from "@/types";
+import { useAdminOrders, useAdminProducts, useStockBatch, useProductThumbnailsBatch } from "@/hooks/use-api";
+import { getProductIdNumber, getProductStock, type Order } from "@/types";
+import { resolveImageUrl, cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/admin/_authenticated/")({
   head: () => ({
@@ -39,83 +40,104 @@ function getStatusVariant(status: string): "pending" | "processing" | "shipped" 
   return map[status] ?? "default";
 }
 
-const STATUS_META: Record<string, { label: string; icon: React.ComponentType<{ className?: string }> }> = {
-  Pending: { label: "Pending", icon: Clock },
-  Processing: { label: "Processing", icon: TrendingUp },
-  Shipped: { label: "Shipped", icon: Truck },
-  Delivered: { label: "Delivered", icon: CheckCircle2 },
-  Cancelled: { label: "Cancelled", icon: XCircle },
-};
-
-// ─── Metric Card ──────────────────────────────────────────────────────────────
+// ─── Subcomponents ────────────────────────────────────────────────────────────
 
 function MetricCard({
   label,
   value,
   sub,
   icon: Icon,
-  accent = false,
+  accent,
 }: {
   label: string;
   value: string | number;
-  sub?: string;
-  icon: React.ComponentType<{ className?: string }>;
+  sub: string;
+  icon: React.ElementType;
   accent?: boolean;
 }) {
   return (
-    <div className="rounded-sm border border-border bg-card p-6 flex flex-col gap-4">
-      <div className="flex items-start justify-between">
+    <div
+      className={cn(
+        "rounded-sm border p-6 transition-colors",
+        accent ? "border-primary/30 bg-primary/5" : "border-border bg-card"
+      )}
+    >
+      <div className="flex items-center justify-between">
         <p className="rule-label">{label}</p>
-        <span className={`flex h-9 w-9 items-center justify-center rounded-sm ${accent ? "bg-primary/12 text-primary" : "bg-muted text-muted-foreground"}`}>
+        <div
+          className={cn(
+            "flex h-8 w-8 items-center justify-center rounded-sm",
+            accent ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground"
+          )}
+        >
           <Icon className="h-4 w-4" />
-        </span>
+        </div>
       </div>
-      <div>
-        <p className="font-display text-3xl font-normal tracking-tight text-foreground">{value}</p>
-        {sub && <p className="mt-1 text-xs text-muted-foreground">{sub}</p>}
-      </div>
+      <p className="mt-4 font-display text-3xl font-normal tracking-tight text-foreground">
+        {value}
+      </p>
+      <p className="mt-2 text-xs text-muted-foreground">{sub}</p>
     </div>
   );
 }
 
-// ─── Order Row ────────────────────────────────────────────────────────────────
-
 function OrderRow({ order }: { order: Order }) {
-  const meta = STATUS_META[order.status];
-  const Icon = meta?.icon ?? Clock;
+  const date = new Date(order.createdAt).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+
   return (
-    <div className="flex items-center gap-4 py-3 border-b border-border last:border-0">
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">Order #{order.id}</p>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-        </p>
+    <div className="flex items-center justify-between py-3 border-b border-border last:border-0">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="min-w-0">
+          <p className="font-mono text-xs text-muted-foreground">#{order.id}</p>
+          <p className="text-sm font-medium text-foreground truncate">
+            {order.user ? `${order.user.firstName} ${order.user.lastName}` : "Customer"}
+          </p>
+        </div>
       </div>
-      <Badge variant={getStatusVariant(order.status)} className="shrink-0">
-        <Icon className="mr-1 h-3 w-3" />
-        {order.status}
-      </Badge>
-      <p className="text-sm font-medium tabular-nums shrink-0">
-        {formatCurrency(order.totalAmount)}
-      </p>
+      <div className="flex items-center gap-4 shrink-0">
+        <span className="text-xs text-muted-foreground">{date}</span>
+        <span className="font-mono text-sm font-medium text-foreground">
+          {formatCurrency(order.totalAmount ?? 0)}
+        </span>
+        <Badge variant={getStatusVariant(order.status)} className="capitalize">
+          {order.status}
+        </Badge>
+      </div>
     </div>
   );
 }
 
 // ─── Low-stock Row ────────────────────────────────────────────────────────────
 
-function LowStockRow({ product }: { product: { id: string; name: string; stockQuantity: number; thumbnailUrl?: string | null } }) {
+function LowStockRow({
+  item,
+}: {
+  item: {
+    product: { id: string; name: string };
+    stockQuantity: number;
+    thumbnailUrl: string | null;
+  };
+}) {
+  const imgUrl = item.thumbnailUrl ? resolveImageUrl(item.thumbnailUrl) : null;
+
   return (
     <div className="flex items-center gap-3 py-3 border-b border-border last:border-0">
       <div className="h-10 w-10 shrink-0 rounded-sm bg-surface overflow-hidden">
-        {product.thumbnailUrl
-          ? <img src={product.thumbnailUrl} alt="" className="h-full w-full object-cover" />
-          : <div className="h-full w-full bg-muted" />
-        }
+        {imgUrl ? (
+          <img src={imgUrl} alt="" className="h-full w-full object-cover" />
+        ) : (
+          <div className="h-full w-full bg-muted" />
+        )}
       </div>
-      <p className="flex-1 min-w-0 text-sm text-foreground truncate">{product.name}</p>
-      <Badge variant={product.stockQuantity === 0 ? "cancelled" : "pending"} className="shrink-0 tabular-nums">
-        {product.stockQuantity === 0 ? "Out of stock" : `${product.stockQuantity} left`}
+      <p className="flex-1 min-w-0 text-sm text-foreground truncate">{item.product.name}</p>
+      <Badge
+        variant={item.stockQuantity === 0 ? "cancelled" : "pending"}
+        className="shrink-0 tabular-nums"
+      >
+        {item.stockQuantity === 0 ? "Out of stock" : `${item.stockQuantity} left`}
       </Badge>
     </div>
   );
@@ -124,13 +146,20 @@ function LowStockRow({ product }: { product: { id: string; name: string; stockQu
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 function AdminDashboardPage() {
-  const { data: ordersData, isLoading: ordersLoading } = useAdminOrders({ limit: 100 });
-  const { data: productsData, isLoading: productsLoading } = useAdminProducts({ limit: 200 });
+  const { data: ordersData, isLoading: ordersLoading } = useAdminOrders({ pageSize: 100 });
+  const { data: productsData, isLoading: productsLoading } = useAdminProducts({ pageSize: 100 });
 
   const orders = ordersData?.data ?? [];
   const products = productsData?.data ?? [];
   const totalOrders = ordersData?.pagination?.totalItems ?? orders.length;
   const totalProducts = productsData?.pagination?.totalItems ?? products.length;
+
+  // Fetch stock and thumbnails in batch from microservices
+  const productIds = products.map((p) => getProductIdNumber(p));
+  const { data: stockData, isLoading: stockLoading } = useStockBatch(productIds);
+  const stockItems = stockData?.data ?? [];
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const thumbnails = thumbnailsData?.data ?? [];
 
   // Derived metrics
   const revenue = orders.reduce((sum, o) => sum + (o.totalAmount ?? 0), 0);
@@ -140,11 +169,27 @@ function AdminDashboardPage() {
   }, {});
   const pendingCount = statusCounts["Pending"] ?? 0;
 
-  // Low-stock: stockQuantity <= 5, sorted ascending
-  const lowStock = [...products]
-    .filter((p) => p.stockQuantity <= 5)
-    .sort((a, b) => a.stockQuantity - b.stockQuantity)
-    .slice(0, 8);
+  // Low-stock: products with stock <= 5 from inventory service
+  const lowStock = stockItems.length > 0
+    ? [...products]
+        .map((p) => {
+          const pId = getProductIdNumber(p);
+          const stockItem = stockItems.find(
+            (i) => Number(i.product_id) === pId || Number((i as any).productId) === pId
+          );
+          return {
+            product: p,
+            stockQuantity: stockItem !== undefined ? stockItem.quantity : undefined,
+            thumbnailUrl: thumbnails.find((t) => Number(t.productId) === pId)?.thumbnailUrl || null,
+          };
+        })
+        .filter(
+          (item): item is { product: (typeof products)[0]; stockQuantity: number; thumbnailUrl: string | null } =>
+            item.stockQuantity !== undefined && item.stockQuantity <= 5
+        )
+        .sort((a, b) => a.stockQuantity - b.stockQuantity)
+        .slice(0, 8)
+    : [];
 
   // Recent orders: newest first
   const recentOrders = [...orders]
@@ -270,8 +315,8 @@ function AdminDashboardPage() {
             </div>
           ) : (
             <div>
-              {lowStock.map((product) => (
-                <LowStockRow key={product.id} product={product} />
+              {lowStock.map((item) => (
+                <LowStockRow key={item.product.id} item={item} />
               ))}
             </div>
           )}

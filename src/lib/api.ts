@@ -12,10 +12,19 @@ import type {
   Order,
   Address,
   ApiError,
+  ProductImage,
+  ProductImagesResponse,
+  ProductThumbnailsBatchResponse,
+  StockBatchResponse,
+  StockBatchItem,
+  StockResponse,
+  StockDeltaRequest,
+  StockAbsoluteRequest,
 } from "@/types";
 import { getAccessToken, useAuthStore } from "@/store/auth";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api";
+const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const API_BASE_URL = rawBaseUrl.endsWith("/api") ? rawBaseUrl.slice(0, -4) : rawBaseUrl;
 
 class ApiClient {
   private baseUrl: string;
@@ -103,6 +112,26 @@ class ApiClient {
     return this.processResponse<T>(response);
   }
 
+  private async requestFormData<T>(
+    endpoint: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`;
+    const token = getAccessToken();
+    const headers: HeadersInit = { ...options.headers };
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      ...options,
+      credentials: "include",
+      headers,
+    });
+
+    return this.processResponse<T>(response);
+  }
+
   private async processResponse<T>(
     response: Response,
     resolve?: (value: T) => void,
@@ -132,38 +161,140 @@ class ApiClient {
   // Products
   async getProducts(params?: {
     page?: number;
+    pageSize?: number;
     limit?: number;
     categoryId?: number;
     searchTerm?: string;
+    sortBy?: string;
   }): Promise<PaginatedResponse<Product>> {
     const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    if (params?.categoryId) queryParams.append("categoryId", params.categoryId.toString());
-    if (params?.searchTerm) queryParams.append("searchTerm", params.searchTerm);
+    const pageNum = params?.page ? Math.max(1, Math.floor(Number(params.page))) : undefined;
+    if (pageNum) queryParams.append("page", pageNum.toString());
 
-    const endpoint = `/products${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
+    const pageSizeNum = (params?.pageSize ?? params?.limit)
+      ? Math.min(100, Math.max(1, Math.floor(Number(params.pageSize ?? params.limit))))
+      : undefined;
+    if (pageSizeNum) queryParams.append("pageSize", pageSizeNum.toString());
+
+    if (params?.categoryId !== undefined && params?.categoryId !== null && !isNaN(Number(params.categoryId))) {
+      queryParams.append("categoryId", Number(params.categoryId).toString());
+    }
+    if (params?.searchTerm && params.searchTerm.trim()) {
+      queryParams.append("searchTerm", params.searchTerm.trim());
+    }
+    if (params?.sortBy) {
+      const sortMap: Record<string, string> = {
+        "price-asc": "price_asc",
+        "price-desc": "price_desc",
+        "price_asc": "price_asc",
+        "price_desc": "price_desc",
+        "newest": "newest",
+        "oldest": "oldest",
+      };
+      const normalizedSort = sortMap[params.sortBy.toLowerCase()];
+      if (normalizedSort) {
+        queryParams.append("sortBy", normalizedSort);
+      }
+      // UI-only sort options like 'featured' or empty strings are omitted for default ordering
+    }
+
+    const endpoint = `/api/products${queryParams.toString() ? `?${queryParams.toString()}` : ""}`;
     return this.request<PaginatedResponse<Product>>(endpoint);
   }
 
   async getProduct(slugOrId: string): Promise<Product> {
     const response = await this.request<{ success: boolean; data: Product; message: string }>(
-      `/products/${slugOrId}`
+      `/api/products/${slugOrId}`
     );
     return response.data;
   }
 
+  // Media Service - Product Images
+  async getProductImages(productId: number | string): Promise<ProductImagesResponse> {
+    return this.request<ProductImagesResponse>(`/api/products/${productId}/images`);
+  }
+
+  // Media Service - Batch Product Thumbnails (for catalog grids)
+  async getProductThumbnailsBatch(productIds: number[]): Promise<ProductThumbnailsBatchResponse> {
+    const validIds = Array.from(new Set(productIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)));
+    if (validIds.length === 0) {
+      return { success: true, data: [], message: "No IDs provided" };
+    }
+
+    // Backend accepts up to 50 IDs per request; chunk if necessary
+    const CHUNK_SIZE = 50;
+    const chunks: number[][] = [];
+    for (let i = 0; i < validIds.length; i += CHUNK_SIZE) {
+      chunks.push(validIds.slice(i, i + CHUNK_SIZE));
+    }
+
+    const responses = await Promise.all(
+      chunks.map((chunk) =>
+        this.request<ProductThumbnailsBatchResponse>(`/api/products/images/batch?ids=${chunk.join(",")}`)
+      )
+    );
+
+    const allThumbnails = responses.flatMap((res) => res.data || []);
+    return {
+      success: true,
+      data: allThumbnails,
+      message: "Thumbnails retrieved successfully",
+    };
+  }
+
+  // Inventory Service - Stock Management
+  async getStockBatch(productIds: number[]): Promise<StockBatchResponse> {
+    const validIds = Array.from(new Set(productIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)));
+    if (validIds.length === 0) {
+      return { success: true, data: [], message: "No IDs provided" };
+    }
+
+    // Backend accepts up to 50 IDs per request; chunk if necessary
+    const CHUNK_SIZE = 50;
+    const chunks: number[][] = [];
+    for (let i = 0; i < validIds.length; i += CHUNK_SIZE) {
+      chunks.push(validIds.slice(i, i + CHUNK_SIZE));
+    }
+
+    const responses = await Promise.all(
+      chunks.map((chunk) =>
+        this.request<StockBatchResponse>(`/api/stock/batch?ids=${chunk.join(",")}`)
+      )
+    );
+
+    const allStockItems = responses.flatMap((res) => res.data || []);
+    return {
+      success: true,
+      data: allStockItems,
+      message: "Stock items retrieved successfully",
+    };
+  }
+
+  async updateStockDelta(productId: number, data: StockDeltaRequest): Promise<StockResponse> {
+    return this.request<StockResponse>(`/api/stock/${productId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async setStockAbsolute(productId: number, data: StockAbsoluteRequest): Promise<StockResponse> {
+    return this.request<StockResponse>(`/api/stock/${productId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
   // Categories
   async getCategories(): Promise<{ success: boolean; data: Category[]; message: string }> {
-    return this.request<{ success: boolean; data: Category[]; message: string }>("/categories");
+    return this.request<{ success: boolean; data: Category[]; message: string }>("/api/categories");
   }
 
   async getCategory(id: number): Promise<Category> {
-    return this.request<Category>(`/categories/${id}`);
+    return this.request<Category>(`/api/categories/${id}`);
   }
 
   async getCategoryBySlug(slug: string): Promise<Category> {
-    const response = await this.request<{ success: boolean; data: Category[]; message: string }>("/categories");
+    const response = await this.request<{ success: boolean; data: Category[]; message: string }>("/api/categories");
     // Check both main categories and subcategories
     let category = response.data.find(c => c.slug === slug);
     if (!category) {
@@ -183,32 +314,32 @@ class ApiClient {
 
   // Auth
   async register(data: RegisterRequest): Promise<RegisterResponse> {
-    return this.request<RegisterResponse>("/auth/register", {
+    return this.request<RegisterResponse>("/api/auth/register", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
   async login(data: LoginRequest): Promise<AuthResponse> {
-    return this.request<AuthResponse>("/auth/login", {
+    return this.request<AuthResponse>("/api/auth/login", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
   async logout(): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>("/auth/logout", {
+    return this.request<{ success: boolean; message: string }>("/api/auth/logout", {
       method: "POST",
     });
   }
 
-  async getCurrentUser(): Promise<{ success: boolean; data: User; message: string }> {
-    return this.request<{ success: boolean; data: User; message: string }>("/auth/me");
+  async getCurrentUser(): Promise<{ success: boolean; data: { user: User } | User; message: string }> {
+    return this.request<{ success: boolean; data: { user: User } | User; message: string }>("/api/auth/me");
   }
 
   // Cart
   async getCart(): Promise<{ success: boolean; data: Cart; message: string }> {
-    return this.request<{ success: boolean; data: Cart; message: string }>("/cart");
+    return this.request<{ success: boolean; data: Cart; message: string }>("/api/cart");
   }
 
   async addToCart(productId: number, quantity: number): Promise<{
@@ -220,13 +351,13 @@ class ApiClient {
       success: boolean;
       data: Cart;
       message: string;
-    }>("/cart/items", {
+    }>("/api/cart/items", {
       method: "POST",
       body: JSON.stringify({ productId, quantity }),
     });
   }
 
-  async updateCartItem(cartItemId: string, quantity: number): Promise<{
+  async updateCartItem(productId: number, quantity: number): Promise<{
     success: boolean;
     data: Cart;
     message: string;
@@ -235,13 +366,13 @@ class ApiClient {
       success: boolean;
       data: Cart;
       message: string;
-    }>(`/cart/items/${cartItemId}`, {
+    }>(`/api/cart/items/${productId}`, {
       method: "PATCH",
       body: JSON.stringify({ quantity }),
     });
   }
 
-  async removeFromCart(cartItemId: string): Promise<{
+  async removeFromCart(productId: number): Promise<{
     success: boolean;
     data: Cart;
     message: string;
@@ -250,7 +381,7 @@ class ApiClient {
       success: boolean;
       data: Cart;
       message: string;
-    }>(`/cart/items/${cartItemId}`, {
+    }>(`/api/cart/items/${productId}`, {
       method: "DELETE",
     });
   }
@@ -264,22 +395,22 @@ class ApiClient {
       success: boolean;
       data: Cart;
       message: string;
-    }>("/cart", {
+    }>("/api/cart", {
       method: "DELETE",
     });
   }
 
   // Orders
   async getOrders(): Promise<{ success: boolean; data: Order[]; message: string }> {
-    return this.request<{ success: boolean; data: Order[]; message: string }>("/orders");
+    return this.request<{ success: boolean; data: Order[]; message: string }>("/api/orders");
   }
 
   async getOrder(id: string): Promise<{ success: boolean; data: Order; message: string }> {
-    return this.request<{ success: boolean; data: Order; message: string }>(`/orders/${id}`);
+    return this.request<{ success: boolean; data: Order; message: string }>(`/api/orders/${id}`);
   }
 
   async cancelOrder(id: string): Promise<{ success: boolean; data: Order; message: string }> {
-    return this.request<{ success: boolean; data: Order; message: string }>(`/orders/${id}/cancel`, {
+    return this.request<{ success: boolean; data: Order; message: string }>(`/api/orders/${id}/cancel`, {
       method: "PATCH",
     });
   }
@@ -288,7 +419,7 @@ class ApiClient {
     addressId: number;
     idempotencyKey: string;
   }): Promise<{ success: boolean; data: Order; message: string }> {
-    return this.request<{ success: boolean; data: Order; message: string }>("/orders", {
+    return this.request<{ success: boolean; data: Order; message: string }>("/api/orders", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -296,7 +427,7 @@ class ApiClient {
 
   // Addresses
   async getAddresses(): Promise<{ success: boolean; data: Address[]; message: string }> {
-    return this.request<{ success: boolean; data: Address[]; message: string }>("/addresses");
+    return this.request<{ success: boolean; data: Address[]; message: string }>("/api/addresses");
   }
 
   async createAddress(data: Omit<Address, "id">): Promise<{
@@ -308,7 +439,7 @@ class ApiClient {
       success: boolean;
       data: Address;
       message: string;
-    }>("/addresses", {
+    }>("/api/addresses", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -323,14 +454,14 @@ class ApiClient {
       success: boolean;
       data: Address;
       message: string;
-    }>(`/addresses/${id}`, {
+    }>(`/api/addresses/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
     });
   }
 
   async deleteAddress(id: string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/addresses/${id}`, {
+    return this.request<{ success: boolean; message: string }>(`/api/addresses/${id}`, {
       method: "DELETE",
     });
   }
@@ -338,56 +469,93 @@ class ApiClient {
   // Admin
   async getAdminOrders(params?: {
     page?: number;
+    pageSize?: number;
     limit?: number;
     status?: string;
   }): Promise<PaginatedResponse<Order>> {
     const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    if (params?.status) queryParams.append("status", params.status);
+    const pageNum = params?.page ? Math.max(1, Math.floor(Number(params.page))) : undefined;
+    if (pageNum) queryParams.append("page", pageNum.toString());
+
+    const pageSizeNum = (params?.pageSize ?? params?.limit)
+      ? Math.min(100, Math.max(1, Math.floor(Number(params.pageSize ?? params.limit))))
+      : undefined;
+    if (pageSizeNum) queryParams.append("pageSize", pageSizeNum.toString());
+
+    if (params?.status) {
+      const normalizedStatus =
+        params.status.charAt(0).toUpperCase() + params.status.slice(1).toLowerCase();
+      queryParams.append("status", normalizedStatus);
+    }
     const qs = queryParams.toString();
-    return this.request<PaginatedResponse<Order>>(`/orders/admin${qs ? `?${qs}` : ""}`);
+    return this.request<PaginatedResponse<Order>>(`/api/orders/admin${qs ? `?${qs}` : ""}`);
   }
 
   async getAdminProducts(params?: {
     page?: number;
+    pageSize?: number;
     limit?: number;
     searchTerm?: string;
   }): Promise<PaginatedResponse<Product>> {
-    const queryParams = new URLSearchParams();
-    if (params?.page) queryParams.append("page", params.page.toString());
-    if (params?.limit) queryParams.append("limit", params.limit.toString());
-    if (params?.searchTerm) queryParams.append("searchTerm", params.searchTerm);
-    const qs = queryParams.toString();
-    return this.request<PaginatedResponse<Product>>(`/products/admin${qs ? `?${qs}` : ""}`);
+    return this.getProducts(params);
   }
 
   // Category Management
   async createCategory(data: {
     name: string;
     slug: string;
+    parentCategoryId?: number | null;
     parentId?: number | null;
   }): Promise<{ success: boolean; data: Category; message: string }> {
-    return this.request<{ success: boolean; data: Category; message: string }>("/categories", {
+    const rawParentId = data.parentCategoryId !== undefined ? data.parentCategoryId : data.parentId;
+    const parentCategoryId = rawParentId !== null && rawParentId !== undefined && !isNaN(Number(rawParentId))
+      ? Number(rawParentId)
+      : null;
+
+    return this.request<{ success: boolean; data: Category; message: string }>("/api/categories", {
       method: "POST",
-      body: JSON.stringify(data),
+      body: JSON.stringify({
+        name: data.name,
+        slug: data.slug,
+        parentCategoryId,
+      }),
     });
   }
 
   async updateCategory(
     id: number,
-    data: { name?: string; slug?: string; parentId?: number | null }
+    data: { name?: string; slug?: string; parentCategoryId?: number | null; parentId?: number | null }
   ): Promise<{ success: boolean; data: Category; message: string }> {
-    return this.request<{ success: boolean; data: Category; message: string }>(`/categories/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
+    const payload: Record<string, any> = {};
+    if (data.name !== undefined) payload.name = data.name;
+    if (data.slug !== undefined) payload.slug = data.slug;
+    if (data.parentCategoryId !== undefined || data.parentId !== undefined) {
+      const rawParentId = data.parentCategoryId !== undefined ? data.parentCategoryId : data.parentId;
+      payload.parentCategoryId =
+        rawParentId !== null && rawParentId !== undefined && !isNaN(Number(rawParentId))
+          ? Number(rawParentId)
+          : null;
+    }
+
+    return this.request<{ success: boolean; data: Category; message: string }>(`/api/categories/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
     });
   }
 
   async deleteCategory(id: number): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/categories/${id}`, {
+    return this.request<{ success: boolean; message: string }>(`/api/categories/${id}`, {
       method: "DELETE",
     });
+  }
+
+  async restoreCategory(id: number): Promise<{ success: boolean; data: Category; message: string }> {
+    return this.request<{ success: boolean; data: Category; message: string }>(
+      `/api/categories/${id}/restore`,
+      {
+        method: "PATCH",
+      }
+    );
   }
 
   // Order Status Update Workstation
@@ -395,33 +563,13 @@ class ApiClient {
     id: string,
     newStatus: string
   ): Promise<{ success: boolean; data: Order; message: string }> {
-    return this.request<{ success: boolean; data: Order; message: string }>(`/orders/${id}/status`, {
+    return this.request<{ success: boolean; data: Order; message: string }>(`/api/orders/${id}/status`, {
       method: "PUT",
       body: JSON.stringify({ newStatus }),
     });
   }
 
   // Product CRUD & Image Management
-  private async requestFormData<T>(
-    endpoint: string,
-    options: RequestInit = {}
-  ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
-    const token = getAccessToken();
-    const headers: HeadersInit = { ...options.headers };
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const response = await fetch(url, {
-      ...options,
-      credentials: "include",
-      headers,
-    });
-
-    return this.processResponse<T>(response);
-  }
-
   async createProduct(data: {
     name: string;
     slug: string;
@@ -430,7 +578,7 @@ class ApiClient {
     stockQuantity: number;
     categoryId: number;
   }): Promise<{ success: boolean; data: Product; message: string }> {
-    return this.request<{ success: boolean; data: Product; message: string }>("/products", {
+    return this.request<{ success: boolean; data: Product; message: string }>("/api/products", {
       method: "POST",
       body: JSON.stringify(data),
     });
@@ -443,18 +591,17 @@ class ApiClient {
       slug?: string;
       description?: string;
       price?: number;
-      stockQuantity?: number;
       categoryId?: number;
     }
   ): Promise<{ success: boolean; data: Product; message: string }> {
-    return this.request<{ success: boolean; data: Product; message: string }>(`/products/${id}`, {
+    return this.request<{ success: boolean; data: Product; message: string }>(`/api/products/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
     });
   }
 
   async deleteProduct(id: number | string): Promise<{ success: boolean; message: string }> {
-    return this.request<{ success: boolean; message: string }>(`/products/${id}`, {
+    return this.request<{ success: boolean; message: string }>(`/api/products/${id}`, {
       method: "DELETE",
     });
   }
@@ -462,11 +609,11 @@ class ApiClient {
   async uploadProductImage(
     id: number | string,
     file: File
-  ): Promise<{ success: boolean; data: Product; message: string }> {
+  ): Promise<{ success: boolean; data: ProductImage; message: string }> {
     const formData = new FormData();
     formData.append("image", file);
-    return this.requestFormData<{ success: boolean; data: Product; message: string }>(
-      `/products/${id}/images`,
+    return this.requestFormData<{ success: boolean; data: ProductImage; message: string }>(
+      `/api/products/${id}/images`,
       {
         method: "POST",
         body: formData,
@@ -479,7 +626,7 @@ class ApiClient {
     imageId: number | string
   ): Promise<{ success: boolean; message: string }> {
     return this.request<{ success: boolean; message: string }>(
-      `/products/${id}/images/${imageId}`,
+      `/api/products/${id}/images/${imageId}`,
       {
         method: "DELETE",
       }
@@ -489,9 +636,9 @@ class ApiClient {
   async setPrimaryProductImage(
     id: number | string,
     imageId: number | string
-  ): Promise<{ success: boolean; data: Product; message: string }> {
-    return this.request<{ success: boolean; data: Product; message: string }>(
-      `/products/${id}/images/${imageId}/primary`,
+  ): Promise<{ success: boolean; data: ProductImage[]; message: string }> {
+    return this.request<{ success: boolean; data: ProductImage[]; message: string }>(
+      `/api/products/${id}/images/${imageId}/primary`,
       {
         method: "PATCH",
       }
@@ -502,7 +649,7 @@ class ApiClient {
     id: number | string
   ): Promise<{ success: boolean; data: Product; message: string }> {
     return this.request<{ success: boolean; data: Product; message: string }>(
-      `/products/${id}/restore`,
+      `/api/products/${id}/restore`,
       {
         method: "PATCH",
       }

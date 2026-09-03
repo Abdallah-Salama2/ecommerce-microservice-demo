@@ -8,8 +8,8 @@ import { ProductCard } from "@/components/storefront/product-card";
 import { ContentCard } from "@/components/storefront/content-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HeroSkeleton, ProductCardSkeleton, CategoryCardSkeleton } from "@/components/ui/skeletons";
-import { useProducts, useCategories } from "@/hooks/use-api";
-import { getProductPrimaryImage, type Category } from "@/types";
+import { useProducts, useCategories, useProductThumbnailsBatch, useStockBatch } from "@/hooks/use-api";
+import { getProductPrimaryImage, getProductIdNumber, getProductStock, type Category } from "@/types";
 import { resolveImageUrl } from "@/lib/utils";
 import hero from "@/assets/hero.jpg";
 
@@ -43,7 +43,7 @@ function HomePage() {
     data: productsData,
     isLoading: productsLoading,
     error: productsError,
-  } = useProducts({ page: 1, limit: 50 });
+  } = useProducts({ page: 1, pageSize: 50 });
   const {
     data: categoriesData,
     isLoading: categoriesLoading,
@@ -52,6 +52,13 @@ function HomePage() {
 
   const products = productsData?.data || [];
   const categories = categoriesData?.data || [];
+
+  // Fetch product thumbnails and stock in batch to avoid N+1 pattern
+  const productIds = products.map(p => getProductIdNumber(p));
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const thumbnails = thumbnailsData?.data || [];
+  const { data: stockData } = useStockBatch(productIds);
+  const stockItems = stockData?.data || [];
 
   // Force re-initialization on mount using a timestamp
   const [mountTimestamp] = useState(() => Date.now());
@@ -64,13 +71,17 @@ function HomePage() {
   // Initialize random selections when data is available
   useEffect(() => {
     if (productsLoading || categoriesLoading || productsError || categoriesError) return;
+    if (products.length === 0) return;
+
+    // Filter in-stock products using inventory service data, fallback to all products if stock data not ready
+    const inStockProducts = stockItems.length > 0
+      ? products.filter((p) => getProductStock(getProductIdNumber(p), stockItems) > 0)
+      : products;
+    const pool = inStockProducts.length > 0 ? inStockProducts : products;
 
     // Pick random hero product
-    const inStockProducts = products.filter((p) => p.stockQuantity > 0);
-    if (inStockProducts.length > 0) {
-      const randomIndex = Math.floor(Math.random() * inStockProducts.length);
-      setHairloom(inStockProducts[randomIndex]);
-    }
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    setHairloom(pool[randomIndex] || null);
 
     // Helper to map a categoryId to its top-level parent category ID
     const getTopCategoryId = (categoryId: number): number => {
@@ -82,7 +93,6 @@ function HomePage() {
     };
 
     // Build a category-diverse list of 4 featured products
-    const pool = products.filter((p) => p.stockQuantity > 0);
     const selectedFeatured: typeof products = [];
     const seenCategoryIds = new Set<number>();
 
@@ -131,29 +141,28 @@ function HomePage() {
         "https://images.unsplash.com/photo-1558060370-d644479cb6b7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3wxMDI0MjYzfDB8MXxzZWFyY2h8MXx8dG95cyUyMGdhbWVzfGVufDB8Mnx8fDE3ODc1OTg1OTJ8MA&ixlib=rb-4.1.0&q=80&w=400",
     };
 
-    // Generate category image mapping with random selection
+    // Generate category image mapping using media thumbnails
     const map = new Map<number, string>();
 
     categories.forEach((category) => {
       const categoryIds = getAllCategoryIds(category);
-      // Filter to only products with valid thumbnail URLs
-      const categoryProducts = products.filter((p) =>
-        categoryIds.includes(p.categoryId) &&
-        getProductPrimaryImage(p).thumbnailUrl !== null
-      );
+      const categoryProducts = products.filter((p) => categoryIds.includes(p.categoryId));
 
+      let foundImage: string | null = null;
       if (categoryProducts.length > 0) {
-        // Use true random to pick a product (different each mount)
-        const randomIndex = Math.floor(Math.random() * categoryProducts.length);
-        const randomProduct = categoryProducts[randomIndex];
-        if (randomProduct) {
-          const thumbnailUrl = getProductPrimaryImage(randomProduct).thumbnailUrl;
-          if (thumbnailUrl) {
-            map.set(category.id, resolveImageUrl(thumbnailUrl));
+        for (const cp of categoryProducts) {
+          const cpId = getProductIdNumber(cp);
+          const thumb = thumbnails.find((t) => t.productId === cpId)?.thumbnailUrl;
+          if (thumb) {
+            foundImage = resolveImageUrl(thumb);
+            break;
           }
         }
+      }
+
+      if (foundImage) {
+        map.set(category.id, foundImage);
       } else {
-        // Use fallback image if no valid products found
         const fallback = categoryFallbackImages[category.slug];
         if (fallback) {
           map.set(category.id, fallback);
@@ -162,7 +171,7 @@ function HomePage() {
     });
 
     setCategoryImageMap(map);
-  }, [products, categories, productsLoading, categoriesLoading, productsError, categoriesError, mountTimestamp]);
+  }, [products, categories, thumbnails, stockItems, productsLoading, categoriesLoading, productsError, categoriesError, mountTimestamp]);
 
   // Helper function to get category name by ID
   const getCategoryName = (categoryId: number) => {
@@ -281,26 +290,35 @@ function HomePage() {
           </div>
 
           {hairloom ? (
-            <Link
-              to="/product/$slug"
-              params={{ slug: hairloom.slug }}
-              className="group relative block rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
-              aria-label={`View ${hairloom.name}`}
-            >
-              <img
-                src={resolveImageUrl(getProductPrimaryImage(hairloom).previewUrl)}
-                alt={getProductPrimaryImage(hairloom).altText || hairloom.name}
-                width={1600}
-                height={1200}
-                className="aspect-[4/3] w-full object-cover rounded-md transition-transform duration-500 ease-out group-hover:scale-[1.01] hero-entrance"
-              />
-              <div className="absolute -bottom-5 left-5 flex items-center gap-3 sm:left-8">
-                <span className="border border-border bg-card px-4 py-3 font-display text-sm tracking-tight transition-colors group-hover:text-primary">
-                  {hairloom.name}
-                </span>
-                <PriceTag amount={hairloom.price} size="md" />
-              </div>
-            </Link>
+            (() => {
+              const hairloomThumbnail = thumbnails.find(
+                (t) => t.productId === getProductIdNumber(hairloom)
+              )?.thumbnailUrl;
+              const heroSrc = hairloomThumbnail ? resolveImageUrl(hairloomThumbnail) : hero;
+
+              return (
+                <Link
+                  to="/product/$slug"
+                  params={{ slug: hairloom.slug }}
+                  className="group relative block rounded-md focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-primary"
+                  aria-label={`View ${hairloom.name}`}
+                >
+                  <img
+                    src={heroSrc}
+                    alt={hairloom.name}
+                    width={1600}
+                    height={1200}
+                    className="aspect-[4/3] w-full object-cover rounded-md transition-transform duration-500 ease-out group-hover:scale-[1.01] hero-entrance"
+                  />
+                  <div className="absolute -bottom-5 left-5 flex items-center gap-3 sm:left-8">
+                    <span className="border border-border bg-card px-4 py-3 font-display text-sm tracking-tight transition-colors group-hover:text-primary">
+                      {hairloom.name}
+                    </span>
+                    <PriceTag amount={hairloom.price} size="md" />
+                  </div>
+                </Link>
+              );
+            })()
           ) : (
             <div className="relative">
               <img
@@ -387,6 +405,8 @@ function HomePage() {
               categoryName={getCategoryName(product.categoryId)}
               priority
               showAddToCart
+              thumbnails={thumbnails}
+              stockItems={stockItems}
             />
           ))}
         </div>

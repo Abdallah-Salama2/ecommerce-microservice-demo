@@ -1,5 +1,6 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useState, useMemo } from "react";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, Select } from "@/components/ui/field";
@@ -7,7 +8,8 @@ import { Container, SectionHeading } from "@/components/storefront/section";
 import { ProductCard } from "@/components/storefront/product-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProductCardSkeleton } from "@/components/ui/skeletons";
-import { useProducts, useCategories } from "@/hooks/use-api";
+import { useProducts, useCategories, useProductThumbnailsBatch, useStockBatch } from "@/hooks/use-api";
+import { getProductIdNumber } from "@/types";
 
 export const Route = createFileRoute("/_storefront/search")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -38,19 +40,27 @@ function SearchPage() {
 
   const sortOrder = search.sort;
 
-  // Local state for search (no URL params, no API calls)
+  // Local state — displayed immediately, debounced before triggering the API query
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearch = useDebounce(searchTerm, 350);
 
-  // Fetch products from backend API using search term
+  // Fetch products from backend API using debounced search term
   const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts(
-    searchTerm.trim()
-      ? { searchTerm: searchTerm.trim(), page: 1, limit: 20 }
-      : { page: 1, limit: 20 }
+    debouncedSearch.trim()
+      ? { searchTerm: debouncedSearch.trim(), page: 1, pageSize: 20, sortBy: sortOrder }
+      : { page: 1, pageSize: 20, sortBy: sortOrder }
   );
   const { data: categoriesData } = useCategories();
 
   const products = productsData?.data || [];
   const categories = categoriesData?.data || [];
+
+  // Fetch product thumbnails and stock in batch to avoid N+1 pattern
+  const productIds = products.map(p => getProductIdNumber(p));
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const thumbnails = thumbnailsData?.data || [];
+  const { data: stockData } = useStockBatch(productIds);
+  const stockItems = stockData?.data || [];
 
   // Helper function to get category name by ID
   const getCategoryName = (categoryId: number) => {
@@ -187,6 +197,8 @@ function SearchPage() {
                     categoryName={getCategoryName(product.categoryId)}
                     priority={i < 2}
                     showAddToCart
+                    thumbnails={thumbnails}
+                    stockItems={stockItems}
                   />
                 ))}
               </div>

@@ -11,14 +11,21 @@ import type {
   Cart,
   Order,
   Address,
+  ProductImage,
+  ProductThumbnail,
+  StockBatchResponse,
+  StockDeltaRequest,
+  StockAbsoluteRequest,
 } from "@/types";
 
 // Products
 export function useProducts(params?: {
   page?: number;
+  pageSize?: number;
   limit?: number;
   categoryId?: number;
   searchTerm?: string;
+  sortBy?: string;
 }) {
   return useQuery({
     queryKey: ["products", params],
@@ -34,6 +41,66 @@ export function useProduct(slug: string) {
     retry: false,
     refetchOnWindowFocus: true, // Refetch when window regains focus
     refetchOnMount: true, // Always refetch on mount
+  });
+}
+
+// Media Service - Product Images
+// NOTE: When used in product grids (shop, category, search, home), this creates an N+1 query pattern.
+// TODO: This should be replaced with a batch endpoint (GET /products/images/batch?ids=...)
+// before shipping to production to avoid performance issues.
+export function useProductImages(productId: number | string) {
+  return useQuery({
+    queryKey: ["product-images", productId],
+    queryFn: () => api.getProductImages(productId),
+    enabled: !!productId,
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes to reduce frequent refetches
+  });
+}
+
+// Media Service - Batch Product Thumbnails (for catalog grids)
+// This avoids the N+1 query pattern by fetching all thumbnails in one request
+export function useProductThumbnailsBatch(productIds: number[]) {
+  return useQuery({
+    queryKey: ["product-thumbnails-batch", productIds],
+    queryFn: () => api.getProductThumbnailsBatch(productIds),
+    enabled: productIds.length > 0,
+    staleTime: 10 * 60 * 1000, // Cache for 10 minutes
+  });
+}
+
+// Inventory Service - Stock Management
+export function useStockBatch(productIds: number[]) {
+  return useQuery({
+    queryKey: ["stock-batch", productIds],
+    queryFn: () => api.getStockBatch(productIds),
+    enabled: productIds.length > 0,
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes - stock changes frequently
+  });
+}
+
+export function useUpdateStockDelta() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ productId, delta }: { productId: number; delta: number }) =>
+      api.updateStockDelta(productId, { delta }),
+    onSuccess: (_, variables) => {
+      // Invalidate stock batch queries to reflect the change
+      queryClient.invalidateQueries({ queryKey: ["stock-batch"] });
+    },
+  });
+}
+
+export function useSetStockAbsolute() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ productId, newQuantity }: { productId: number; newQuantity: number }) =>
+      api.setStockAbsolute(productId, { newQuantity }),
+    onSuccess: (_, variables) => {
+      // Invalidate stock batch queries to reflect the change
+      queryClient.invalidateQueries({ queryKey: ["stock-batch"] });
+    },
   });
 }
 
@@ -80,6 +147,7 @@ export function useLogin() {
     mutationFn: (data: LoginRequest) => api.login(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["user"] });
+      // Invalidate cart to fetch fresh data from cart-service
       queryClient.invalidateQueries({ queryKey: ["cart"] });
     },
   });
@@ -137,8 +205,8 @@ export function useUpdateCartItem() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ cartItemId, quantity }: { cartItemId: string; quantity: number }) =>
-      api.updateCartItem(cartItemId, quantity),
+    mutationFn: ({ productId, quantity }: { productId: number; quantity: number }) =>
+      api.updateCartItem(productId, quantity),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart"] });
       queryClient.refetchQueries({ queryKey: ["cart"] });
@@ -150,7 +218,7 @@ export function useRemoveFromCart() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (cartItemId: string) => api.removeFromCart(cartItemId),
+    mutationFn: (productId: number) => api.removeFromCart(productId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["cart"] });
       queryClient.refetchQueries({ queryKey: ["cart"] });
@@ -179,10 +247,13 @@ export function useOrders() {
 }
 
 export function useOrder(id: string) {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   return useQuery({
     queryKey: ["order", id],
     queryFn: () => api.getOrder(id),
-    enabled: !!id,
+    enabled: !!id && isAuthenticated,
+    retry: 1,
+    staleTime: 30 * 1000, // 30s — order status can change so keep fresh
   });
 }
 
@@ -244,6 +315,11 @@ export function useUpdateAddress() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["addresses"] });
     },
+    onError: (error) => {
+      if (error instanceof Error && error.message.includes('404')) {
+        console.error('Address not found or does not belong to user');
+      }
+    },
   });
 }
 
@@ -255,11 +331,23 @@ export function useDeleteAddress() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["addresses"] });
     },
+    onError: (error) => {
+      if (error instanceof Error && error.message.includes('404')) {
+        console.error('Address not found or does not belong to user');
+      }
+    },
   });
 }
 
+
+
 // Admin
-export function useAdminOrders(params?: { page?: number; limit?: number; status?: string }) {
+export function useAdminOrders(params?: {
+  page?: number;
+  pageSize?: number;
+  limit?: number;
+  status?: string;
+}) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   return useQuery({
     queryKey: ["admin-orders", params],
@@ -268,7 +356,12 @@ export function useAdminOrders(params?: { page?: number; limit?: number; status?
   });
 }
 
-export function useAdminProducts(params?: { page?: number; limit?: number; searchTerm?: string }) {
+export function useAdminProducts(params?: {
+  page?: number;
+  pageSize?: number;
+  limit?: number;
+  searchTerm?: string;
+}) {
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   return useQuery({
     queryKey: ["admin-products", params],
@@ -281,8 +374,12 @@ export function useCreateCategory() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (data: { name: string; slug: string; parentId?: number | null }) =>
-      api.createCategory(data),
+    mutationFn: (data: {
+      name: string;
+      slug: string;
+      parentCategoryId?: number | null;
+      parentId?: number | null;
+    }) => api.createCategory(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
     },
@@ -298,7 +395,12 @@ export function useUpdateCategory() {
       data,
     }: {
       id: number;
-      data: { name?: string; slug?: string; parentId?: number | null };
+      data: {
+        name?: string;
+        slug?: string;
+        parentCategoryId?: number | null;
+        parentId?: number | null;
+      };
     }) => api.updateCategory(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
@@ -313,6 +415,24 @@ export function useDeleteCategory() {
     mutationFn: (id: number) => api.deleteCategory(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["categories"] });
+    },
+  });
+}
+
+export function useRestoreCategory() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (id: number) => api.restoreCategory(id),
+    onSuccess: async (_, variables) => {
+      // Clear cache to prevent stale data
+      queryClient.clear();
+      // Invalidate all category-related queries
+      queryClient.invalidateQueries({ queryKey: ["categories"] });
+      queryClient.invalidateQueries({ queryKey: ["category", String(variables)] });
+      queryClient.invalidateQueries({ queryKey: ["category"] });
+      // Force refetch to ensure fresh data from backend
+      await queryClient.refetchQueries({ queryKey: ["category", String(variables)] });
     },
   });
 }
@@ -365,7 +485,6 @@ export function useUpdateProduct() {
         slug?: string;
         description?: string;
         price?: number;
-        stockQuantity?: number;
         categoryId?: number;
       };
     }) => api.updateProduct(id, data),
@@ -396,10 +515,11 @@ export function useUploadProductImage() {
     mutationFn: ({ id, file }: { id: number | string; file: File }) =>
       api.uploadProductImage(id, file),
     onSuccess: async (_, variables) => {
-      // Clear cache to prevent stale data from Redis
-      queryClient.clear();
-      // Force refetch to ensure fresh data from backend
-      await queryClient.refetchQueries({ queryKey: ["product", String(variables.id)] });
+      // Invalidate product images query to reflect the new upload
+      queryClient.invalidateQueries({ queryKey: ["product-images", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["product-images", Number(variables.id)] });
+      queryClient.invalidateQueries({ queryKey: ["product-images", String(variables.id)] });
+      queryClient.invalidateQueries({ queryKey: ["product-thumbnails-batch"] });
     },
   });
 }
@@ -411,10 +531,11 @@ export function useDeleteProductImage() {
     mutationFn: ({ id, imageId }: { id: number | string; imageId: number | string }) =>
       api.deleteProductImage(id, imageId),
     onSuccess: async (_, variables) => {
-      // Clear cache to prevent stale data from Redis
-      queryClient.clear();
-      // Force refetch to ensure fresh data from backend
-      await queryClient.refetchQueries({ queryKey: ["product", String(variables.id)] });
+      // Invalidate product images query to reflect the deletion
+      queryClient.invalidateQueries({ queryKey: ["product-images", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["product-images", Number(variables.id)] });
+      queryClient.invalidateQueries({ queryKey: ["product-images", String(variables.id)] });
+      queryClient.invalidateQueries({ queryKey: ["product-thumbnails-batch"] });
     },
   });
 }
@@ -426,10 +547,11 @@ export function useSetPrimaryProductImage() {
     mutationFn: ({ id, imageId }: { id: number | string; imageId: number | string }) =>
       api.setPrimaryProductImage(id, imageId),
     onSuccess: async (_, variables) => {
-      // Clear cache to prevent stale data from Redis
-      queryClient.clear();
-      // Force refetch to ensure fresh data from backend
-      await queryClient.refetchQueries({ queryKey: ["product", String(variables.id)] });
+      // Invalidate product images query to reflect the primary image change
+      queryClient.invalidateQueries({ queryKey: ["product-images", variables.id] });
+      queryClient.invalidateQueries({ queryKey: ["product-images", Number(variables.id)] });
+      queryClient.invalidateQueries({ queryKey: ["product-images", String(variables.id)] });
+      queryClient.invalidateQueries({ queryKey: ["product-thumbnails-batch"] });
     },
   });
 }
@@ -447,6 +569,7 @@ export function useRestoreProduct() {
       queryClient.invalidateQueries({ queryKey: ["admin-products"] });
       queryClient.invalidateQueries({ queryKey: ["product", String(variables)] });
       queryClient.invalidateQueries({ queryKey: ["product"] });
+      queryClient.invalidateQueries({ queryKey: ["product-images", String(variables)] });
       // Force refetch to ensure fresh data from backend
       await queryClient.refetchQueries({ queryKey: ["product", String(variables)] });
     },

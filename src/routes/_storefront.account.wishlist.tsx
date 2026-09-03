@@ -3,7 +3,8 @@ import { Heart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Container, SectionHeading } from "@/components/storefront/section";
 import { ProductCard } from "@/components/storefront/product-card";
-import { useProducts } from "@/hooks/use-api";
+import { useProducts, useProductThumbnailsBatch, useStockBatch } from "@/hooks/use-api";
+import { getProductIdNumber } from "@/types";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { useWishlist } from "@/store/wishlist";
 
@@ -31,11 +32,18 @@ function WishlistPage() {
 
   const { data: productsData, isLoading } = useProducts({
     page: 1,
-    limit: 100,
+    pageSize: 100,
   });
 
   const allProducts = productsData?.data || [];
   const wishlistProducts = allProducts.filter((p) => wishlistIds.has(p.id));
+
+  // Batch fetch thumbnails and stock for products
+  const productIds = allProducts.map(p => getProductIdNumber(p));
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const thumbnails = thumbnailsData?.data || [];
+  const { data: stockData } = useStockBatch(productIds);
+  const stockItems = stockData?.data || [];
 
   return (
     <ProtectedRoute>
@@ -91,7 +99,12 @@ function WishlistPage() {
               <div className="mt-8 grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                 {wishlistProducts.map((product) => (
                   <div key={product.id} className="group/wish relative">
-                    <ProductCard product={product} showAddToCart />
+                    <ProductCard
+                      product={product}
+                      showAddToCart
+                      thumbnails={thumbnails}
+                      stockItems={stockItems}
+                    />
                     <Button
                       variant="ghost"
                       size="icon"
@@ -120,6 +133,8 @@ function WishlistPage() {
                     key={product.id}
                     product={product}
                     showAddToCart
+                    thumbnails={thumbnails}
+                    stockItems={stockItems}
                   />
                 ))}
               </div>

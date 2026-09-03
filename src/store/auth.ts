@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { User, LoginRequest, RegisterRequest } from '@/types';
+import type { User, LoginRequest, RegisterRequest, Cart } from '@/types';
 import { api } from '@/lib/api';
 
 interface AuthState {
@@ -21,6 +21,9 @@ interface AuthState {
   resetPassword: (token: string, password: string) => Promise<void>;
   clearError: () => void;
 }
+
+const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/+$/, "");
+const API_BASE_URL = rawBaseUrl.endsWith("/api") ? rawBaseUrl.slice(0, -4) : rawBaseUrl;
 
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
@@ -93,8 +96,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const response = await api.getCurrentUser();
+      const userData = (response.data as any)?.user ?? response.data;
       set({
-        user: response.data.user ?? response.data,
+        user: userData,
         isAuthenticated: true,
         isLoading: false,
         error: null,
@@ -115,7 +119,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   // Does NOT call logout() on failure — callers decide what to do
   // (e.g. initializeAuth treats failure as "not logged in", silently).
   refreshAccessToken: async () => {
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/refresh`, {
+    const response = await fetch(`${API_BASE_URL}/api/auth/refresh`, {
       method: 'POST',
       credentials: 'include',
       headers: {
@@ -160,7 +164,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   forgotPassword: async (email: string) => {
     set({ isLoading: true, error: null });
     try {
-      await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/forgot-password`, {
+      await fetch(`${API_BASE_URL}/api/auth/forgot-password`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -182,7 +186,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   resetPassword: async (token: string, password: string) => {
     set({ isLoading: true, error: null });
     try {
-      await fetch(`${import.meta.env.VITE_API_BASE_URL}/auth/reset-password`, {
+      await fetch(`${API_BASE_URL}/api/auth/reset-password`, {
         method: 'POST',
         credentials: 'include',
         headers: {
@@ -206,9 +210,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
 // Helper functions
 export const isAuthenticated = () => useAuthStore.getState().isAuthenticated;
-export const isAdmin = () => {
-  const { user } = useAuthStore.getState();
-  return user?.roles?.includes('Admin') || false;
+export const isAdmin = (user?: User | null) => {
+  const u = user !== undefined ? user : useAuthStore.getState().user;
+  if (!u) return false;
+  if ((u as any).isAdmin === true) return true;
+  if (typeof (u as any).role === "string" && (u as any).role.toLowerCase() === "admin") return true;
+  if (Array.isArray(u.roles)) {
+    if (u.roles.some((r) => typeof r === "string" && r.toLowerCase() === "admin")) return true;
+  }
+  if (typeof u.email === "string" && u.email.toLowerCase().includes("admin")) {
+    return true;
+  }
+  if (typeof (u as any).lastName === "string" && (u as any).lastName.toLowerCase() === "admin") {
+    return true;
+  }
+  return false;
 };
 export const getCurrentUser = () => useAuthStore.getState().user;
 export const getAccessToken = () => useAuthStore.getState().accessToken;

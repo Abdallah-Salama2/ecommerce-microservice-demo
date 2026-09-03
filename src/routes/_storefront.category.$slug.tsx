@@ -1,5 +1,6 @@
 import { createFileRoute, useSearch } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, Select } from "@/components/ui/field";
@@ -8,7 +9,8 @@ import { Container, SectionHeading } from "@/components/storefront/section";
 import { ProductCard } from "@/components/storefront/product-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProductCardSkeleton } from "@/components/ui/skeletons";
-import { useProducts, useCategoryBySlug, useCategories } from "@/hooks/use-api";
+import { useProducts, useCategoryBySlug, useCategories, useProductThumbnailsBatch, useStockBatch } from "@/hooks/use-api";
+import { getProductIdNumber } from "@/types";
 
 export const Route = createFileRoute("/_storefront/category/$slug")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -42,8 +44,9 @@ function CategoryPage() {
   const sortOrder = search.sort;
   const selectedSubcategoryId = search.subcategory;
 
-  // Local state for search (no URL params, no API calls)
+  // Local state for search — displayed immediately, debounced before hitting the API
   const [searchTerm, setSearchTerm] = useState("");
+  const debouncedSearch = useDebounce(searchTerm, 350);
 
   const { data: category, isLoading: categoryLoading, error: categoryError } = useCategoryBySlug(slug);
   const { data: categoriesData } = useCategories();
@@ -52,25 +55,33 @@ function CategoryPage() {
   // If a subcategory is selected, use that ID; otherwise use parent category ID
   const activeCategoryId = selectedSubcategoryId || category?.id;
 
-  // Fetch products from backend API using categoryId and search term
+  // Fetch products from backend API using categoryId and debounced search term
   const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts({
-    ...(activeCategoryId ? { categoryId: activeCategoryId } : {}),
-    ...(searchTerm.trim() ? { searchTerm: searchTerm.trim() } : {}),
+    ...(activeCategoryId ? { categoryId: Number(activeCategoryId) } : {}),
+    ...(debouncedSearch.trim() ? { searchTerm: debouncedSearch.trim() } : {}),
     page: 1,
-    limit: 50,
+    pageSize: 50,
+    sortBy: sortOrder,
   });
 
   const products = productsData?.data || [];
   const categories = categoriesData?.data || [];
+
+  // Fetch product thumbnails and stock in batch to avoid N+1 pattern
+  const productIds = products.map(p => getProductIdNumber(p));
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const thumbnails = thumbnailsData?.data || [];
+  const { data: stockData } = useStockBatch(productIds);
+  const stockItems = stockData?.data || [];
 
   // Helper function to get category name by ID
   const getCategoryName = (categoryId: number) => {
     const cat = categories.find(c => c.id === categoryId);
     if (cat) return cat.name;
 
-    // Check in subcategories
+    // Check in subcategories (both children and subcategories fields)
     for (const c of categories) {
-      const subCat = c.children.find(sub => sub.id === categoryId);
+      const subCat = c.children?.find(sub => sub.id === categoryId) || c.subcategories?.find(sub => sub.id === categoryId);
       if (subCat) return subCat.name;
     }
 
@@ -218,30 +229,39 @@ function CategoryPage() {
             />
           </Field>
 
-          {category?.children && category.children.length > 0 && (
-            <div className="flex flex-col gap-3">
-              <span className="rule-label">Subcategory</span>
-              <div className="flex flex-wrap gap-2">
-                <Badge
-                  variant={!selectedSubcategoryId ? "default" : "outline"}
-                  className="cursor-pointer"
-                  onClick={() => handleSubcategoryChange(undefined)}
-                >
-                  All {category.name}
-                </Badge>
-                {category.children.map((child) => (
+          {/* Subcategory chips — works with both API shapes (subcategories or children) */}
+          {(() => {
+            const subList = category?.subcategories?.length
+              ? category.subcategories
+              : category?.children?.length
+              ? category.children
+              : [];
+            if (subList.length === 0) return null;
+            return (
+              <div className="flex flex-col gap-3">
+                <span className="rule-label">Subcategory</span>
+                <div className="flex flex-wrap gap-2">
                   <Badge
-                    key={child.id}
-                    variant={selectedSubcategoryId === child.id ? "default" : "outline"}
-                    className="cursor-pointer"
-                    onClick={() => handleSubcategoryChange(child.id)}
+                    variant={!selectedSubcategoryId ? "default" : "outline"}
+                    className="cursor-pointer select-none"
+                    onClick={() => handleSubcategoryChange(undefined)}
                   >
-                    {child.name}
+                    All {category.name}
                   </Badge>
-                ))}
+                  {subList.map((child) => (
+                    <Badge
+                      key={child.id}
+                      variant={selectedSubcategoryId === child.id ? "default" : "outline"}
+                      className="cursor-pointer select-none"
+                      onClick={() => handleSubcategoryChange(child.id)}
+                    >
+                      {child.name}
+                    </Badge>
+                  ))}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </aside>
 
         <section>
@@ -265,6 +285,8 @@ function CategoryPage() {
                   categoryName={getCategoryName(product.categoryId)}
                   priority={i < 2}
                   showAddToCart
+                  thumbnails={thumbnails}
+                  stockItems={stockItems}
                 />
               ))}
             </div>

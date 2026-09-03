@@ -8,8 +8,12 @@ function stockState(stock: number): StockState {
   return "instock";
 }
 
-/** Stock status badge — mono count included so inventory reads consistently. */
-export function StockBadge({ stock, showCount = true }: { stock: number; showCount?: boolean }) {
+/** Stock status badge — mono count included so inventory reads consistently.
+ *  Accepts `undefined` for when stock data is still loading (renders nothing). */
+export function StockBadge({ stock, showCount = true }: { stock: number | undefined; showCount?: boolean }) {
+  // Don't show anything while stock data is still loading
+  if (stock === undefined) return null;
+
   const state = stockState(stock);
 
   if (state === "soldout") return <Badge variant="soldout">Sold out</Badge>;

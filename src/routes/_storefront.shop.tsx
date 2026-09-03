@@ -6,7 +6,8 @@ import { Container, SectionHeading } from "@/components/storefront/section";
 import { ProductCard } from "@/components/storefront/product-card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProductCardSkeleton } from "@/components/ui/skeletons";
-import { useProducts, useCategories } from "@/hooks/use-api";
+import { useProducts, useCategories, useProductThumbnailsBatch, useStockBatch } from "@/hooks/use-api";
+import { getProductIdNumber } from "@/types";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export const Route = createFileRoute("/_storefront/shop")({
@@ -43,17 +44,25 @@ function ShopPage() {
   const sortOrder = search.sort;
   const currentPage = search.page;
 
-  // Fetch products with server-side pagination
+  // Fetch products with server-side pagination and sorting
   const { data: productsData, isLoading: productsLoading, error: productsError } = useProducts({
     page: currentPage,
-    limit: 20,
+    pageSize: 20,
     categoryId: categoryFilter ? Number(categoryFilter) : undefined,
+    sortBy: sortOrder,
   });
   const { data: categoriesData, isLoading: categoriesLoading } = useCategories();
 
   const products = productsData?.data || [];
   const categories = categoriesData?.data || [];
   const pagination = productsData?.pagination;
+
+  // Fetch product thumbnails and stock in batch to avoid N+1 pattern
+  const productIds = products.map(p => getProductIdNumber(p));
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const thumbnails = thumbnailsData?.data || [];
+  const { data: stockData } = useStockBatch(productIds);
+  const stockItems = stockData?.data || [];
 
   // Helper function to get category name by ID
   const getCategoryName = (categoryId: number) => {
@@ -231,6 +240,8 @@ function ShopPage() {
                     categoryName={getCategoryName(product.categoryId)}
                     priority={i < 2}
                     showAddToCart
+                    thumbnails={thumbnails}
+                    stockItems={stockItems}
                   />
                 ))}
               </div>

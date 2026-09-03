@@ -3,12 +3,12 @@ import { ShieldCheck, AlertTriangle, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
-import { useAuthStore } from "@/store/auth";
+import { useAuthStore, isAdmin } from "@/store/auth";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const loginSchema = z.object({
@@ -31,9 +31,16 @@ export const Route = createFileRoute("/admin/login")({
 
 function AdminLoginPage() {
   const navigate = useNavigate();
-  const { login, logout, isLoading, clearError } = useAuthStore();
+  const { login, logout, isLoading, clearError, user, isAuthenticated, isInitialized } = useAuthStore();
   const [accessDenied, setAccessDenied] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  // If already authenticated as admin, redirect to /admin dashboard
+  useEffect(() => {
+    if (isInitialized && isAuthenticated && isAdmin(user)) {
+      navigate({ to: "/admin" });
+    }
+  }, [isInitialized, isAuthenticated, user, navigate]);
 
   const {
     register,
@@ -52,10 +59,10 @@ function AdminLoginPage() {
       // After login, check if the user actually has the Admin role.
       // We read directly from the store snapshot (post-login state is
       // already committed before this line runs).
-      const user = useAuthStore.getState().user;
-      const isAdmin = user?.roles?.includes("Admin") ?? false;
+      const currentUser = useAuthStore.getState().user;
+      const userIsAdmin = isAdmin(currentUser);
 
-      if (!isAdmin) {
+      if (!userIsAdmin) {
         // Not an admin — log them back out so we don't leave a
         // non-admin session lingering, then surface the denial message.
         await logout();

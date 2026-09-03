@@ -5,7 +5,14 @@ import { PriceTag } from "@/components/ui/price-tag";
 import { Container, SectionHeading } from "@/components/storefront/section";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CartItemSkeleton } from "@/components/ui/skeletons";
-import { useCart, useUpdateCartItem, useRemoveFromCart, useClearCart } from "@/hooks/use-api";
+import {
+  useCart,
+  useUpdateCartItem,
+  useRemoveFromCart,
+  useClearCart,
+  useProductThumbnailsBatch,
+  useStockBatch,
+} from "@/hooks/use-api";
 import { resolveImageUrl } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -30,11 +37,18 @@ function CartPage() {
   const subtotal = cart?.subtotal ?? 0;
   const itemCount = cart?.itemCount || 0;
 
-  const handleQuantityChange = async (cartItemId: string, newQuantity: number) => {
+  // Fetch product thumbnails and stock in batch for cart items
+  const productIds = items.map((i) => i.productId);
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const { data: stockData } = useStockBatch(productIds);
+  const thumbnails = thumbnailsData?.data || [];
+  const stockItems = stockData?.data || [];
+
+  const handleQuantityChange = async (productId: number, newQuantity: number) => {
     if (newQuantity < 1) return;
 
     try {
-      await updateCartItem.mutateAsync({ cartItemId, quantity: newQuantity });
+      await updateCartItem.mutateAsync({ productId, quantity: newQuantity });
       // Refetch to ensure we have the latest data
       refetch();
     } catch (error) {
@@ -43,9 +57,9 @@ function CartPage() {
     }
   };
 
-  const handleRemoveItem = async (cartItemId: string) => {
+  const handleRemoveItem = async (productId: number) => {
     try {
-      await removeFromCart.mutateAsync(cartItemId);
+      await removeFromCart.mutateAsync(productId);
       toast.success("Item removed from cart");
       refetch();
     } catch (error) {
@@ -150,6 +164,10 @@ function CartPage() {
     );
   }
 
+  // Separate active and inactive items
+  const activeItems = items.filter(item => item.isActive);
+  const inactiveItems = items.filter(item => !item.isActive);
+
   return (
     <Container className="py-14 sm:py-20">
       <header className="max-w-2xl">
@@ -165,86 +183,150 @@ function CartPage() {
       <div className="mt-14 grid gap-12 lg:grid-cols-[1fr_20rem] lg:gap-20">
         <section>
           <div className="flex flex-col gap-8">
-            {items.map((item) => (
-              <div key={item.cartItemId} className="flex gap-6 border-b border-border pb-8">
-                {item.thumbnailUrl ? (
-                  <Link
-                    to="/product/$slug"
-                    params={{ slug: item.productSlug }}
-                    className="shrink-0"
-                  >
-                    <img
-                      src={resolveImageUrl(item.thumbnailUrl)}
-                      alt={item.productName}
-                      width={1024}
-                      height={1024}
-                      loading="lazy"
-                      className="w-24 h-24 object-cover"
-                    />
-                  </Link>
-                ) : (
-                  <div className="w-24 h-24 shrink-0 bg-muted flex items-center justify-center">
-                    <span className="text-muted-foreground text-xs">No image</span>
-                  </div>
-                )}
+            {/* Active items */}
+            {activeItems.map((item) => {
+              const itemThumbnail =
+                thumbnails.find((t) => Number(t.productId) === item.productId)?.thumbnailUrl ||
+                item.thumbnailUrl;
+              const imageUrl = itemThumbnail ? resolveImageUrl(itemThumbnail) : null;
 
-                <div className="flex min-w-0 flex-1 flex-col gap-3">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <Link
-                        to="/product/$slug"
-                        params={{ slug: item.productSlug }}
-                        className="font-display text-lg leading-snug tracking-tight transition-colors hover:text-primary"
-                      >
-                        {item.productName}
-                      </Link>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {item.stockQuantity > 0 ? `${item.stockQuantity} in stock` : 'Out of stock'}
-                      </p>
-                    </div>
-                    <PriceTag amount={(item.price || 0) * item.quantity} size="md" />
-                  </div>
+              const stockItem = stockItems.find(
+                (s) =>
+                  Number(s.product_id) === item.productId ||
+                  Number((s as any).productId) === item.productId
+              );
+              const resolvedStock =
+                stockItem !== undefined
+                  ? stockItem.quantity
+                  : typeof item.availableStock === "number" && item.availableStock > 0
+                  ? item.availableStock
+                  : undefined;
+              const isOutOfStock = resolvedStock !== undefined ? resolvedStock <= 0 : false;
+              const isOverStock =
+                resolvedStock !== undefined && resolvedStock > 0
+                  ? item.quantity > resolvedStock
+                  : false;
 
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <label htmlFor={`qty-${item.cartItemId}`} className="sr-only">
-                        Quantity
-                      </label>
-                      <Input
-                        id={`qty-${item.cartItemId}`}
-                        type="number"
-                        min="1"
-                        max={item.stockQuantity}
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const value = parseInt(e.target.value);
-                          if (value > 0 && value <= item.stockQuantity) {
-                            handleQuantityChange(item.cartItemId, value);
-                          }
-                        }}
-                        className="w-20"
-                        disabled={updateCartItem.isPending}
-                      />
-                      <span className="text-sm text-muted-foreground">
-                        × ${item.price ? item.price.toFixed(2) : '0.00'}
-                      </span>
-                    </div>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveItem(item.cartItemId)}
-                      disabled={removeFromCart.isPending}
+              return (
+                <div key={item.productId} className="flex gap-6 border-b border-border pb-8">
+                  {imageUrl ? (
+                    <Link
+                      to="/product/$slug"
+                      params={{ slug: item.slug }}
+                      className="shrink-0"
                     >
-                      Remove
-                    </Button>
+                      <img
+                        src={imageUrl}
+                        alt={item.name}
+                        width={1024}
+                        height={1024}
+                        loading="lazy"
+                        className="w-24 h-24 object-cover"
+                      />
+                    </Link>
+                  ) : (
+                    <div className="w-24 h-24 shrink-0 bg-muted flex items-center justify-center">
+                      <span className="text-muted-foreground text-xs">No image</span>
+                    </div>
+                  )}
+
+                  <div className="flex min-w-0 flex-1 flex-col gap-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <Link
+                          to="/product/$slug"
+                          params={{ slug: item.slug }}
+                          className="font-display text-lg leading-snug tracking-tight transition-colors hover:text-primary"
+                        >
+                          {item.name}
+                        </Link>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {resolvedStock !== undefined
+                            ? resolvedStock > 0
+                              ? `${resolvedStock} in stock`
+                              : "Out of stock"
+                            : "In stock"}
+                        </p>
+                        {/* isOverStock warning */}
+                        {isOverStock && (
+                          <p className="mt-1 text-sm text-destructive font-medium">
+                            Only {resolvedStock} left — please reduce quantity
+                          </p>
+                        )}
+                      </div>
+                      <PriceTag amount={item.price * item.quantity} size="md" />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <label htmlFor={`qty-${item.productId}`} className="sr-only">
+                          Quantity
+                        </label>
+                        <Input
+                          id={`qty-${item.productId}`}
+                          type="number"
+                          min="1"
+                          max={resolvedStock !== undefined && resolvedStock > 0 ? resolvedStock : 999}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value, 10);
+                            if (!isNaN(value) && value > 0) {
+                              handleQuantityChange(item.productId, value);
+                            }
+                          }}
+                          className="w-20"
+                          disabled={updateCartItem.isPending}
+                        />
+                        <span className="text-sm text-muted-foreground">
+                          × ${item.price.toFixed(2)}
+                        </span>
+                      </div>
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveItem(item.productId)}
+                        disabled={removeFromCart.isPending}
+                      >
+                        Remove
+                      </Button>
+                    </div>
                   </div>
                 </div>
+              );
+            })}
+
+            {/* Inactive items - show with remove button */}
+            {inactiveItems.length > 0 && (
+              <div className="border-t border-border pt-8">
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground mb-4">
+                  No longer available
+                </h3>
+                {inactiveItems.map((item) => (
+                  <div key={item.productId} className="flex gap-6 border-b border-border pb-6 last:border-0">
+                    <div className="w-24 h-24 shrink-0 bg-muted flex items-center justify-center opacity-50">
+                      <span className="text-muted-foreground text-xs">Unavailable</span>
+                    </div>
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 opacity-50">
+                      <p className="font-medium line-through">{item.name}</p>
+                      <p className="text-sm text-muted-foreground">This product is no longer available</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemoveItem(item.productId)}
+                        disabled={removeFromCart.isPending}
+                        className="self-start"
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
 
-          {items.length > 1 && (
+          {activeItems.length > 1 && (
             <Button
               variant="ghost"
               size="sm"

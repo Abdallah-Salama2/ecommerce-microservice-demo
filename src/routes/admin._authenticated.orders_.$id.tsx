@@ -1,24 +1,37 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft, Package, User, MapPin, CreditCard, RefreshCw, AlertCircle } from "lucide-react";
+import {
+  ChevronLeft,
+  Package,
+  User,
+  MapPin,
+  CreditCard,
+  RefreshCw,
+  AlertCircle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PriceTag } from "@/components/ui/price-tag";
 import { useOrder, useUpdateOrderStatus } from "@/hooks/use-api";
-import { getProductPrimaryImage } from "@/types";
-import { resolveImageUrl } from "@/lib/utils";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/admin/_authenticated/orders/$id")({
+export const Route = createFileRoute("/admin/_authenticated/orders_/$id")({
   component: AdminOrderWorkstationPage,
 });
 
 // --- Strict backend status values (exact capitalized strings) ---
-type OrderStatus = "Pending" | "Processing" | "Shipped" | "Delivered" | "Cancelled";
+type OrderStatus =
+  | "Pending"
+  | "Processing"
+  | "Confirmed"
+  | "Shipped"
+  | "Delivered"
+  | "Cancelled";
 
 const VALID_TRANSITIONS: Record<string, OrderStatus[]> = {
   Pending: ["Processing", "Cancelled"],
-  Processing: ["Shipped", "Cancelled"],
+  Processing: ["Confirmed", "Cancelled"],
+  Confirmed: ["Shipped", "Cancelled"],
   Shipped: ["Delivered"],
   Delivered: [],
   Cancelled: [],
@@ -36,6 +49,7 @@ function normalizeStatus(raw: string): OrderStatus {
 const STATUS_BADGE_VARIANT: Record<string, string> = {
   Pending: "pending",
   Processing: "processing",
+  Confirmed: "confirmed",
   Shipped: "shipped",
   Delivered: "delivered",
   Cancelled: "cancelled",
@@ -60,7 +74,7 @@ function StatusControl({
       const msg: string = err?.message ?? "";
       if (msg.includes("409") || msg.toLowerCase().includes("conflict")) {
         toast.error(
-          "Status conflict — this order was already updated by another session. Refresh the page and retry."
+          "Status conflict — this order was already updated by another session. Refresh the page and retry.",
         );
       } else {
         toast.error(msg || "Failed to update order status");
@@ -76,7 +90,9 @@ function StatusControl({
             <RefreshCw className="h-4 w-4" />
           </div>
           <div>
-            <p className="text-sm font-medium text-foreground">Fulfillment Status Control</p>
+            <p className="text-sm font-medium text-foreground">
+              Fulfillment Status Control
+            </p>
             {isTerminal ? (
               <p className="flex items-center gap-1 text-xs text-muted-foreground">
                 <AlertCircle className="inline h-3 w-3 text-amber-500" />
@@ -108,7 +124,9 @@ function StatusControl({
                 onClick={() => handleTransition(nextStatus)}
                 className="whitespace-nowrap gap-1.5"
               >
-                {updateStatusMutation.isPending ? "Updating..." : `→ ${nextStatus}`}
+                {updateStatusMutation.isPending
+                  ? "Updating..."
+                  : `→ ${nextStatus}`}
               </Button>
             ))}
           </div>
@@ -125,16 +143,23 @@ function AdminOrderWorkstationPage() {
   const order = data?.data;
 
   if (isLoading) {
-    return <div className="p-12 text-center text-muted-foreground">Loading order workstation...</div>;
+    return (
+      <div className="p-12 text-center text-muted-foreground">
+        Loading order workstation...
+      </div>
+    );
   }
 
   if (error || !order) {
     return (
       <div className="p-12 text-center space-y-4">
-        <p className="text-destructive font-medium">Order #{id} not found or access denied.</p>
+        <p className="text-destructive font-medium">
+          Order #{id} not found or access denied.
+        </p>
         <p className="text-xs text-muted-foreground max-w-sm mx-auto">
-          If you are trying to view a customer order, ensure your admin session is active.
-          The admin role is required to inspect orders that don't belong to your own account.
+          If you are trying to view a customer order, ensure your admin session
+          is active. The admin role is required to inspect orders that don't
+          belong to your own account.
         </p>
         <div className="flex items-center justify-center gap-3">
           <Button variant="outline" size="sm" onClick={() => refetch()}>
@@ -160,7 +185,12 @@ function AdminOrderWorkstationPage() {
     <div className="space-y-8 p-6 lg:p-8">
       {/* Navigation Breadcrumb */}
       <div>
-        <Button asChild variant="ghost" size="sm" className="gap-1 px-0 text-muted-foreground hover:text-foreground">
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className="gap-1 px-0 text-muted-foreground hover:text-foreground"
+        >
           <Link to="/admin/orders">
             <ChevronLeft className="h-4 w-4" />
             Back to Orders List
@@ -171,7 +201,9 @@ function AdminOrderWorkstationPage() {
             <h1 className="font-display text-2xl font-normal tracking-tight text-foreground sm:text-3xl">
               Order #{order.id} Workstation
             </h1>
-            <p className="mt-1 text-xs text-muted-foreground">Placed on {dateStr}</p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Placed on {dateStr}
+            </p>
           </div>
           <Badge
             variant={badgeVariant as any}
@@ -208,26 +240,17 @@ function AdminOrderWorkstationPage() {
                   </thead>
                   <tbody className="divide-y divide-border">
                     {(order.items || []).map((item) => {
-                      const img = item.product ? getProductPrimaryImage(item.product) : null;
-
                       return (
                         <tr key={item.id}>
                           <td className="px-6 py-4">
                             <div className="flex items-center gap-3">
-                              {img?.thumbnailUrl ? (
-                                <img
-                                  src={resolveImageUrl(img.thumbnailUrl)}
-                                  alt={item.product?.name || "Product"}
-                                  className="h-12 w-12 rounded-sm object-cover border border-border shrink-0 bg-surface"
-                                />
-                              ) : (
-                                <div className="h-12 w-12 rounded-sm bg-muted flex items-center justify-center shrink-0 text-xs text-muted-foreground">
-                                  No img
-                                </div>
-                              )}
+                              <div className="h-12 w-12 rounded-sm bg-muted flex items-center justify-center shrink-0 text-xs text-muted-foreground">
+                                No img
+                              </div>
                               <div className="min-w-0">
                                 <p className="font-medium text-foreground truncate max-w-[240px]">
-                                  {item.product?.name || `Product #${item.productId}`}
+                                  {item.productTitle ||
+                                    `Product #${item.productId}`}
                                 </p>
                                 <p className="font-mono text-xs text-muted-foreground">
                                   SKU: PRD-{item.productId}
@@ -236,13 +259,13 @@ function AdminOrderWorkstationPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <PriceTag amount={item.price} size="sm" />
+                            <PriceTag amount={item.unitPrice} size="sm" />
                           </td>
                           <td className="px-6 py-4 font-mono text-xs text-foreground">
                             {item.quantity}
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <PriceTag amount={item.price * item.quantity} size="sm" />
+                            <PriceTag amount={item.totalPrice} size="sm" />
                           </td>
                         </tr>
                       );
@@ -270,14 +293,18 @@ function AdminOrderWorkstationPage() {
                   Name
                 </p>
                 <p className="font-medium text-foreground">
-                  {order.user ? `${order.user.firstName} ${order.user.lastName}` : "Guest User"}
+                  {order.user
+                    ? `${order.user.firstName} ${order.user.lastName}`
+                    : "Guest User"}
                 </p>
               </div>
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Email
                 </p>
-                <p className="font-mono text-xs text-foreground truncate">{order.user?.email || "N/A"}</p>
+                <p className="font-mono text-xs text-foreground truncate">
+                  {order.user?.email || "N/A"}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -293,7 +320,9 @@ function AdminOrderWorkstationPage() {
             <CardContent className="p-5 text-sm leading-relaxed text-muted-foreground">
               {order.address ? (
                 <div>
-                  <p className="font-medium text-foreground">{order.address.line1}</p>
+                  <p className="font-medium text-foreground">
+                    {order.address.line1}
+                  </p>
                   {order.address.line2 && <p>{order.address.line2}</p>}
                   <p>
                     {order.address.city}, {order.address.governorate}{" "}
@@ -302,7 +331,9 @@ function AdminOrderWorkstationPage() {
                   <p>{order.address.country}</p>
                 </div>
               ) : (
-                <p className="italic text-muted-foreground/70">Standard Shipping Address</p>
+                <p className="italic text-muted-foreground/70">
+                  Standard Shipping Address
+                </p>
               )}
             </CardContent>
           </Card>

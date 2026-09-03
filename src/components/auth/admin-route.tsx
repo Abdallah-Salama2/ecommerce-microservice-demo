@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { useAuthStore } from "@/store/auth";
+import { useAuthStore, isAdmin } from "@/store/auth";
 
 interface AdminRouteProps {
   children: React.ReactNode;
@@ -16,7 +16,7 @@ interface AdminRouteProps {
 export function AdminRoute({ children }: AdminRouteProps) {
   const navigate = useNavigate();
   const { isAuthenticated, isInitialized, user } = useAuthStore();
-  const isUserAdmin = user?.roles?.includes("Admin") ?? false;
+  const isUserAdmin = isAdmin(user);
 
   useEffect(() => {
     if (!isInitialized) return;

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ChevronLeft, Save, Upload, Trash2, Star, Image as ImageIcon } from "lucide-react";
+import { ChevronLeft, Save, Upload, Trash2, Star, Image as ImageIcon, Plus, Minus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +11,10 @@ import {
   useUploadProductImage,
   useDeleteProductImage,
   useSetPrimaryProductImage,
+  useProductImages,
+  useStockBatch,
+  useUpdateStockDelta,
+  useSetStockAbsolute,
 } from "@/hooks/use-api";
 import { getProductIdNumber } from "@/types";
 import { resolveImageUrl } from "@/lib/utils";
@@ -25,7 +29,6 @@ interface FormErrors {
   slug?: string;
   description?: string;
   price?: string;
-  stockQuantity?: string;
   categoryId?: string;
 }
 
@@ -38,20 +41,33 @@ function AdminEditProductPage() {
   const uploadImageMutation = useUploadProductImage();
   const deleteImageMutation = useDeleteProductImage();
   const setPrimaryImageMutation = useSetPrimaryProductImage();
+  const updateStockDeltaMutation = useUpdateStockDelta();
+  const setStockAbsoluteMutation = useSetStockAbsolute();
 
   const categories = categoriesData?.data || [];
   const productId = product ? getProductIdNumber(product) : 0;
+
+  // Fetch images separately from media-service
+  const { data: imagesData, isLoading: imagesLoading, refetch: refetchImages } = useProductImages(productId);
+  const images = imagesData?.data || [];
+
+  // Fetch stock from inventory-service
+  const { data: stockData } = useStockBatch(productId ? [productId] : []);
+  const currentStock = stockData?.data?.[0]?.quantity || 0;
 
   // Form State
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState("");
-  const [stockQuantity, setStockQuantity] = useState("");
   const [categoryId, setCategoryId] = useState("");
 
   const [errors, setErrors] = useState<FormErrors>({});
   const [uploading, setUploading] = useState(false);
+
+  // Stock management state
+  const [stockDelta, setStockDelta] = useState("");
+  const [stockAbsolute, setStockAbsolute] = useState("");
 
   useEffect(() => {
     if (product) {
@@ -59,7 +75,6 @@ function AdminEditProductPage() {
       setSlug(product.slug || "");
       setDescription(product.description || "");
       setPrice(product.price ? String(product.price) : "");
-      setStockQuantity(product.stockQuantity !== undefined ? String(product.stockQuantity) : "");
       setCategoryId(product.categoryId ? String(product.categoryId) : "");
     }
   }, [product]);
@@ -70,8 +85,6 @@ function AdminEditProductPage() {
     if (!slug.trim()) errs.slug = "Slug is required";
     if (!description.trim()) errs.description = "Description is required";
     if (!price || Number(price) <= 0) errs.price = "Enter a valid positive price";
-    if (stockQuantity === "" || Number(stockQuantity) < 0)
-      errs.stockQuantity = "Enter a valid stock quantity";
     if (!categoryId) errs.categoryId = "Category selection is required";
 
     setErrors(errs);
@@ -94,7 +107,6 @@ function AdminEditProductPage() {
           slug: slug.trim(),
           description: description.trim(),
           price: Number(price),
-          stockQuantity: Number(stockQuantity),
           categoryId: Number(categoryId),
         },
       });
@@ -119,12 +131,56 @@ function AdminEditProductPage() {
           });
         }
       }
-      toast.success("Image uploaded successfully");
+      toast.success("Image uploaded successfully. Processing...");
       e.target.value = "";
+
+      // Poll for image processing completion after upload
+      // Image upload is now async - status will be 'pending' initially
+      setTimeout(() => {
+        refetchImages();
+      }, 3000); // Refetch after 3 seconds to check if processing is complete
     } catch (err: any) {
       toast.error(err.message || "Failed to upload image");
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleStockDeltaUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productId || !stockDelta) return;
+
+    const delta = parseInt(stockDelta, 10);
+    if (isNaN(delta) || delta === 0) {
+      toast.error("Please enter a valid number");
+      return;
+    }
+
+    try {
+      await updateStockDeltaMutation.mutateAsync({ productId, delta });
+      toast.success(`Stock ${delta > 0 ? 'increased' : 'decreased'} by ${Math.abs(delta)}`);
+      setStockDelta("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to update stock");
+    }
+  };
+
+  const handleStockAbsoluteUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!productId || !stockAbsolute) return;
+
+    const newQuantity = parseInt(stockAbsolute, 10);
+    if (isNaN(newQuantity) || newQuantity < 0) {
+      toast.error("Please enter a valid non-negative number");
+      return;
+    }
+
+    try {
+      await setStockAbsoluteMutation.mutateAsync({ productId, newQuantity });
+      toast.success(`Stock set to ${newQuantity}`);
+      setStockAbsolute("");
+    } catch (err: any) {
+      toast.error(err.message || "Failed to set stock");
     }
   };
 
@@ -181,7 +237,8 @@ function AdminEditProductPage() {
     );
   }
 
-  const images = product.images || [];
+  // All fetched images are available; only explicitly 'pending' items show the processing state
+  const processedImages = images.filter(img => img.status !== 'pending');
 
   return (
     <div className="space-y-8 p-6 lg:p-8 max-w-5xl mx-auto">
@@ -293,27 +350,12 @@ function AdminEditProductPage() {
                     {errors.price && <p className="mt-1 text-xs text-destructive">{errors.price}</p>}
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                      Stock Quantity
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={stockQuantity}
-                      onChange={(e) => setStockQuantity(e.target.value)}
-                      className="mt-1.5 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-2 focus-visible:outline-primary"
-                    />
-                    {errors.stockQuantity && (
-                      <p className="mt-1 text-xs text-destructive">{errors.stockQuantity}</p>
-                    )}
-                  </div>
                 </div>
               </CardContent>
             </Card>
 
             <div className="flex items-center justify-end gap-3">
-              <Button asChild variant="secondary">
+              <Button asChild variant="outline" type="button">
                 <Link to="/admin/products">Cancel</Link>
               </Button>
               <Button type="submit" disabled={updateProductMutation.isPending} className="gap-2">
@@ -361,58 +403,194 @@ function AdminEditProductPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-4">
+                  {/* Show all images, with processing state indicated */}
                   {images.map((img) => (
                     <div
                       key={img.id}
                       className="group relative overflow-hidden rounded-md border border-border bg-surface"
                     >
-                      <img
-                        src={resolveImageUrl(img.previewUrl || img.thumbnailUrl)}
-                        alt={img.altText || product.name}
-                        className="aspect-square w-full object-cover"
-                      />
+                      {img.status === 'pending' ? (
+                        <div className="aspect-square w-full flex items-center justify-center bg-muted">
+                          <div className="text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-2"></div>
+                            <p className="text-xs text-muted-foreground">Processing...</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <img
+                          src={resolveImageUrl(img.previewUrl || img.thumbnailUrl)}
+                          alt={img.altText || product.name}
+                          className="aspect-square w-full object-cover"
+                        />
+                      )}
 
-                      {/* Primary Indicator Badge */}
-                      {img.isPrimary && (
-                        <div className="absolute top-2 left-2 z-20">
+                      {/* Status Badge */}
+                      <div className="absolute top-2 left-2 z-20">
+                        {img.status === 'pending' ? (
+                          <Badge variant="secondary" className="whitespace-nowrap text-[0.55rem] px-2 py-0.5 shadow-md bg-yellow-500 text-white">
+                            PROCESSING
+                          </Badge>
+                        ) : img.isPrimary && (
                           <Badge variant="sale" className="whitespace-nowrap gap-1 text-[0.55rem] px-2 py-0.5 shadow-md">
                             <Star className="h-3 w-3 fill-current" />
                             PRIMARY
                           </Badge>
-                        </div>
-                      )}
+                        )}
+                      </div>
 
-                      {/* Action overlay */}
-                      <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity p-2">
-                        {!img.isPrimary && (
+                      {/* Action overlay - available for ready images */}
+                      {img.status !== 'pending' && (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center gap-2 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity p-2">
+                          {!img.isPrimary && (
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              size="sm"
+                              onClick={() => handleSetPrimary(img.id)}
+                              disabled={setPrimaryImageMutation.isPending}
+                              className="h-8 px-2 text-xs"
+                              title="Set as primary image"
+                            >
+                              Set Primary
+                            </Button>
+                          )}
                           <Button
                             type="button"
-                            variant="secondary"
+                            variant="ghost"
                             size="sm"
-                            onClick={() => handleSetPrimary(img.id)}
-                            disabled={setPrimaryImageMutation.isPending}
-                            className="h-8 px-2 text-xs"
-                            title="Set as primary image"
+                            onClick={() => handleDeleteImage(img.id)}
+                            disabled={deleteImageMutation.isPending}
+                            className="h-8 w-8 p-0 bg-background/80 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                            title="Delete image"
                           >
-                            Set Primary
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                        )}
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteImage(img.id)}
-                          disabled={deleteImageMutation.isPending}
-                          className="h-8 w-8 p-0 bg-background/80 text-destructive hover:bg-destructive hover:text-destructive-foreground"
-                          title="Delete image"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Stock Management Card */}
+          <Card>
+            <CardHeader className="border-b border-border py-4">
+              <CardTitle className="flex items-center gap-2 text-base font-medium">
+                Stock Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-5 space-y-6">
+              {/* Current Stock Display */}
+              <div className="flex items-center justify-between p-4 bg-muted rounded-md">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Current Stock
+                  </p>
+                  <p className="mt-1 text-2xl font-display font-normal tracking-tight">
+                    {currentStock}
+                  </p>
+                </div>
+                <div className={`px-3 py-1 rounded-full text-xs font-medium ${currentStock > 10 ? 'bg-green-100 text-green-800' :
+                    currentStock > 0 ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                  }`}>
+                  {currentStock > 10 ? 'In Stock' : currentStock > 0 ? 'Low Stock' : 'Out of Stock'}
+                </div>
+              </div>
+
+              {/* Delta Adjustment */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Relative Adjustment (+/-)
+                </label>
+                <form onSubmit={handleStockDeltaUpdate} className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      type="number"
+                      value={stockDelta}
+                      onChange={(e) => setStockDelta(e.target.value)}
+                      placeholder="+10 or -5"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-2 focus-visible:outline-primary"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    size="sm"
+                    disabled={updateStockDeltaMutation.isPending || !stockDelta}
+                  >
+                    {updateStockDeltaMutation.isPending ? "Updating..." : "Adjust"}
+                  </Button>
+                </form>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Use positive numbers to add stock, negative to remove
+                </p>
+              </div>
+
+              {/* Absolute Setting */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+                  Set Absolute Value
+                </label>
+                <form onSubmit={handleStockAbsoluteUpdate} className="flex gap-2">
+                  <div className="flex-1 relative">
+                    <input
+                      type="number"
+                      value={stockAbsolute}
+                      onChange={(e) => setStockAbsolute(e.target.value)}
+                      placeholder="50"
+                      min="0"
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono focus-visible:outline-2 focus-visible:outline-primary"
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    variant="secondary"
+                    size="sm"
+                    disabled={setStockAbsoluteMutation.isPending || !stockAbsolute}
+                  >
+                    {setStockAbsoluteMutation.isPending ? "Setting..." : "Set"}
+                  </Button>
+                </form>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Set stock to a specific value regardless of current amount
+                </p>
+              </div>
+
+              {/* Quick Actions */}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStockDelta("+10")}
+                  className="flex-1 gap-1"
+                >
+                  <Plus className="h-3 w-3" />
+                  +10
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStockDelta("-1")}
+                  className="flex-1 gap-1"
+                >
+                  <Minus className="h-3 w-3" />
+                  -1
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStockAbsolute("0")}
+                  className="flex-1"
+                >
+                  Set to 0
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>

@@ -28,7 +28,11 @@ function OrderConfirmationPage() {
   const order = orderData?.data;
 
   const handleCancelOrder = async () => {
-    if (!window.confirm("Are you sure you want to cancel this order? This cannot be undone.")) {
+    if (
+      !window.confirm(
+        "Are you sure you want to cancel this order? This cannot be undone.",
+      )
+    ) {
       return;
     }
     try {
@@ -40,12 +44,15 @@ function OrderConfirmationPage() {
     }
   };
 
-  const canCancelOrder = order?.status?.toLowerCase() === 'pending';
+  const canCancelOrder =
+    order?.status?.toLowerCase() === "pending" ||
+    order?.status?.toLowerCase() === "processing";
 
   const getStatusVariant = (status: string) => {
     const s = status.toLowerCase();
     if (s === "pending") return "pending";
     if (s === "processing") return "processing";
+    if (s === "confirmed") return "confirmed";
     if (s === "shipped") return "shipped";
     if (s === "delivered") return "delivered";
     if (s === "cancelled") return "cancelled";
@@ -65,11 +72,9 @@ function OrderConfirmationPage() {
   }
 
   // Check ownership: order must exist and match logged in user's ID
-  const isOrderOwner = order && (
-    !order.userId ||
-    !user?.id ||
-    String(order.userId) === String(user.id)
-  );
+  const isOrderOwner =
+    order &&
+    (!order.userId || !user?.id || String(order.userId) === String(user.id));
 
   if (error || !order || !isOrderOwner) {
     return (
@@ -78,7 +83,8 @@ function OrderConfirmationPage() {
           <div className="flex min-h-[50vh] flex-col items-center justify-center">
             <p className="text-destructive mb-4">Order not found.</p>
             <p className="text-sm text-muted-foreground mb-6">
-              The requested order does not exist or you do not have permission to view it.
+              The requested order does not exist or you do not have permission
+              to view it.
             </p>
             <Button asChild variant="secondary">
               <Link to="/shop">Return to shop</Link>
@@ -160,8 +166,12 @@ function OrderConfirmationPage() {
                       className="flex items-start justify-between gap-4 border-b border-border pb-4 last:border-0 last:pb-0"
                     >
                       <div className="min-w-0 flex-1">
-                        <p className="font-medium">{item.productTitle || `Product #${item.productId}`}</p>
-                        <p className="text-sm text-muted-foreground">Qty: {item.quantity}</p>
+                        <p className="font-medium">
+                          {item.productTitle || `Product #${item.productId}`}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Qty: {item.quantity}
+                        </p>
                       </div>
                       <PriceTag amount={item.totalPrice} size="md" />
                     </div>
@@ -180,12 +190,17 @@ function OrderConfirmationPage() {
               <CardContent className="space-y-4">
                 <div className="space-y-3">
                   {order.items?.map((item) => (
-                    <div key={item.id} className="flex items-start justify-between gap-4">
+                    <div
+                      key={item.id}
+                      className="flex items-start justify-between gap-4"
+                    >
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium truncate">
                           {item.productTitle || `Product #${item.productId}`}
                         </p>
-                        <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Qty: {item.quantity}
+                        </p>
                       </div>
                       <PriceTag amount={item.totalPrice} size="sm" />
                     </div>
@@ -195,7 +210,10 @@ function OrderConfirmationPage() {
                 <div className="border-t border-border pt-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Subtotal</span>
-                    <PriceTag amount={order.subtotal || order.totalAmount} size="md" />
+                    <PriceTag
+                      amount={order.subtotal || order.totalAmount}
+                      size="md"
+                    />
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Shipping</span>
@@ -221,4 +239,3 @@ function OrderConfirmationPage() {
     </ProtectedRoute>
   );
 }
-

@@ -3,8 +3,8 @@ import { Heart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PriceTag } from "@/components/ui/price-tag";
 import { StockBadge, SaleBadge } from "@/components/storefront/stock-badge";
-import type { Product } from "@/types";
-import { getProductPrimaryImage, getProductIdNumber } from "@/types";
+import type { Product, ProductThumbnail, StockBatchItem } from "@/types";
+import { getProductPrimaryImage, getProductIdNumber, getProductThumbnail } from "@/types";
 import { cn, resolveImageUrl } from "@/lib/utils";
 import { useAddToCart } from "@/hooks/use-api";
 import { useWishlist } from "@/store/wishlist";
@@ -20,20 +20,54 @@ export function ProductCard({
   priority = false,
   className,
   showAddToCart = false,
+  thumbnails = [],
+  stock,
+  stockItems,
 }: {
   product: Product;
   categoryName?: string;
   priority?: boolean;
   className?: string;
   showAddToCart?: boolean;
+  thumbnails?: ProductThumbnail[];
+  stock?: number;
+  stockItems?: StockBatchItem[];
 }) {
-  const primaryImg = getProductPrimaryImage(product);
-  const imageUrl = resolveImageUrl(primaryImg.thumbnailUrl);
-  const imageAlt = primaryImg.altText || product.name;
-  const onSale = false; // API doesn't provide compareAt price
-  const isOutOfStock = product.stockQuantity === 0;
+  // All hooks must run unconditionally at the top of the component
   const addToCart = useAddToCart();
   const { isInWishlist, toggleWishlist } = useWishlist();
+
+  const productIdNum = getProductIdNumber(product);
+
+  // Resolve thumbnail from batch thumbnails if provided, or fallback to product primary image
+  const thumbnailItem = thumbnails && thumbnails.length > 0
+    ? getProductThumbnail(product, thumbnails)
+    : null;
+  const primaryImg = getProductPrimaryImage(product);
+  const rawImageUrl = thumbnailItem || primaryImg.thumbnailUrl;
+  const imageUrl = rawImageUrl ? resolveImageUrl(rawImageUrl) : "";
+  const imageAlt = primaryImg.altText || product.name;
+
+  const onSale = false; // API doesn't provide compareAt price
+
+  // Find this product's stock entry directly from the batch.
+  // Number() coercion handles APIs that return product_id as a string.
+  // resolvedStock stays undefined (not 0) when: stockItems is empty/loading,
+  // or when this product has no entry in the batch yet.
+  const batchItem = Array.isArray(stockItems) && stockItems.length > 0
+    ? stockItems.find(
+        (i) => Number(i.product_id) === productIdNum || Number((i as any).productId) === productIdNum
+      )
+    : undefined;
+
+  const resolvedStock =
+    stock !== undefined
+      ? stock
+      : batchItem !== undefined
+      ? batchItem.quantity
+      : undefined;
+
+  const isOutOfStock = resolvedStock !== undefined ? resolvedStock <= 0 : false;
   const isSaved = isInWishlist(product.id);
 
   const handleToggleWishlist = (e: React.MouseEvent) => {
@@ -104,9 +138,9 @@ export function ProductCard({
             <SaleBadge />
           </span>
         ) : null}
-        {isOutOfStock && (
+        {isOutOfStock && resolvedStock !== undefined && (
           <span className="absolute left-4 top-4">
-            <StockBadge stock={0} showCount={false} />
+            <StockBadge stock={resolvedStock} showCount={false} />
           </span>
         )}
 
@@ -128,7 +162,9 @@ export function ProductCard({
                 {product.name}
               </Link>
             </h3>
-            {!isOutOfStock && <StockBadge stock={product.stockQuantity} showCount={false} />}
+            {resolvedStock !== undefined && (
+              <StockBadge stock={resolvedStock} showCount={true} />
+            )}
           </div>
           {categoryName && <p className="rule-label mt-2">{categoryName}</p>}
         </div>

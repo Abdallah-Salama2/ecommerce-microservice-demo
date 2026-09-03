@@ -87,8 +87,8 @@ function AdminCreateProductPage() {
       
       // Redirect to edit workstation so images can be added
       navigate({
-        to: "/admin/products/$id/edit",
-        params: { id: String(newId) },
+        to: "/admin/products/$slug/edit",
+        params: { slug: newProduct.slug },
       });
     } catch (err: any) {
       toast.error(err.message || "Failed to create product");

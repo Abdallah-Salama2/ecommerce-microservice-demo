@@ -30,6 +30,7 @@ function DashboardPage() {
     const s = status.toLowerCase();
     if (s === "pending") return "pending";
     if (s === "processing") return "processing";
+    if (s === "confirmed") return "confirmed";
     if (s === "shipped") return "shipped";
     if (s === "delivered") return "delivered";
     if (s === "cancelled") return "cancelled";

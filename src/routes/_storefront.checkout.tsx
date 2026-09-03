@@ -57,13 +57,20 @@ function CheckoutPage() {
   const [showNewAddressForm, setShowNewAddressForm] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Generate idempotency key once on component mount
+  // This key is reused across retries to prevent duplicate orders
+  const [idempotencyKey] = useState(() => generateUUID());
+
   const cart = cartData?.data;
   const items = cart?.items || [];
   const subtotal = cart?.subtotal || 0;
   const addresses = addressesData?.data || [];
 
-  // Redirect if cart is empty
-  if (!cartLoading && !cartError && (!cart || items.length === 0)) {
+  // Only show active items in checkout
+  const activeItems = items.filter(item => item.isActive);
+
+  // Redirect if cart is empty or no active items
+  if (!cartLoading && !cartError && (!cart || activeItems.length === 0)) {
     navigate({ to: "/cart" });
     return null;
   }
@@ -137,11 +144,10 @@ function CheckoutPage() {
 
     try {
       const addressId = selectedAddressId ? parseInt(selectedAddressId, 10) : 0;
-      const idempotencyKey = generateUUID();
 
       const result = await createOrder.mutateAsync({
         addressId,
-        idempotencyKey,
+        idempotencyKey, // Use the key generated on component mount
       });
 
       toast.success("Order placed successfully!");
@@ -552,10 +558,10 @@ function CheckoutPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-3">
-                {items.map((item) => (
-                  <div key={item.cartItemId} className="flex items-start justify-between gap-4">
+                {activeItems.map((item) => (
+                  <div key={item.productId} className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium truncate">{item.productName}</p>
+                      <p className="text-sm font-medium truncate">{item.name}</p>
                       <p className="text-xs text-muted-foreground">Qty: {item.quantity}</p>
                     </div>
                     <PriceTag amount={item.price * item.quantity} size="sm" />

@@ -17,6 +17,7 @@ const badgeVariants = cva(
         /** order status variants matching design system tokens */
         pending: "border-promo/40 bg-promo/15 text-foreground",
         processing: "border-primary/30 bg-primary/10 text-primary",
+        confirmed: "border-primary/40 bg-primary/15 text-primary",
         shipped: "border-primary/50 bg-primary/20 text-primary",
         delivered: "border-border bg-surface text-foreground",
         cancelled: "border-destructive/30 bg-destructive/10 text-destructive",
@@ -28,7 +29,7 @@ const badgeVariants = cva(
 
 export interface BadgeProps
   extends React.HTMLAttributes<HTMLSpanElement>,
-    VariantProps<typeof badgeVariants> {}
+  VariantProps<typeof badgeVariants> { }
 
 function Badge({ className, variant, ...props }: BadgeProps) {
   return <span className={cn(badgeVariants({ variant }), className)} {...props} />;

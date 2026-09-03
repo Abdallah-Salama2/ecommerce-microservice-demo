@@ -1,10 +1,16 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Plus, Search, Edit2, Trash2, FolderTree, Tag, Layers, X, Check } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, FolderTree, Tag, Layers, X, Check, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { useCategories, useCreateCategory, useUpdateCategory, useDeleteCategory } from "@/hooks/use-api";
+import {
+  useCategories,
+  useCreateCategory,
+  useUpdateCategory,
+  useDeleteCategory,
+  useRestoreCategory,
+} from "@/hooks/use-api";
 import type { Category } from "@/types";
 import { toast } from "sonner";
 
@@ -17,6 +23,7 @@ function AdminCategoriesPage() {
   const createCategoryMutation = useCreateCategory();
   const updateCategoryMutation = useUpdateCategory();
   const deleteCategoryMutation = useDeleteCategory();
+  const restoreCategoryMutation = useRestoreCategory();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -79,7 +86,14 @@ function AdminCategoriesPage() {
     if (item.parentName) {
       parentCategory = categories.find((c) => c.name === item.parentName);
     }
-    setParentId(parentCategory ? parentCategory.id : null);
+    const resolvedParentId =
+      category.parentCategoryId !== undefined && category.parentCategoryId !== null
+        ? Number(category.parentCategoryId)
+        : parentCategory
+        ? Number(parentCategory.id)
+        : null;
+
+    setParentId(resolvedParentId);
     setIsModalOpen(true);
   };
 
@@ -105,6 +119,11 @@ function AdminCategoriesPage() {
       return;
     }
 
+    const selectedParentCategoryId =
+      parentId !== null && parentId !== undefined && !isNaN(Number(parentId))
+        ? Number(parentId)
+        : null;
+
     try {
       if (editingCategory) {
         await updateCategoryMutation.mutateAsync({
@@ -112,7 +131,8 @@ function AdminCategoriesPage() {
           data: {
             name: name.trim(),
             slug: slug.trim(),
-            parentId: parentId || null,
+            parentCategoryId: selectedParentCategoryId,
+            parentId: selectedParentCategoryId,
           },
         });
         toast.success(`Category "${name}" updated successfully`);
@@ -120,7 +140,8 @@ function AdminCategoriesPage() {
         await createCategoryMutation.mutateAsync({
           name: name.trim(),
           slug: slug.trim(),
-          parentId: parentId || null,
+          parentCategoryId: selectedParentCategoryId,
+          parentId: selectedParentCategoryId,
         });
         toast.success(`Category "${name}" created successfully`);
       }
@@ -140,6 +161,15 @@ function AdminCategoriesPage() {
       toast.success(`Category "${cat.name}" deleted successfully`);
     } catch (err: any) {
       toast.error(err.message || "Failed to delete category");
+    }
+  };
+
+  const handleRestore = async (cat: Category) => {
+    try {
+      await restoreCategoryMutation.mutateAsync(cat.id);
+      toast.success(`Category "${cat.name}" restored successfully`);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to restore category");
     }
   };
 
@@ -197,75 +227,119 @@ function AdminCategoriesPage() {
                     <th className="px-6 py-3">Slug</th>
                     <th className="px-6 py-3">Hierarchy / Parent</th>
                     <th className="px-6 py-3">Subcategories</th>
+                    <th className="px-6 py-3">Status</th>
                     <th className="px-6 py-3 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {filteredCategories.map(({ category, parentName, isSubcategory }) => (
-                    <tr key={category.id} className="hover:bg-muted/30 transition-colors">
-                      <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
-                        #{category.id}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-2">
+                  {filteredCategories.map(({ category, parentName, isSubcategory }) => {
+                    const isInactive = category.isActive === false;
+
+                    return (
+                      <tr
+                        key={category.id}
+                        className={`hover:bg-muted/30 transition-colors ${
+                          isInactive ? "bg-muted/20 opacity-70" : ""
+                        }`}
+                      >
+                        <td className="px-6 py-4 font-mono text-xs text-muted-foreground">
+                          #{category.id}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-2">
+                            {isSubcategory ? (
+                              <span className="text-muted-foreground pl-3 text-xs">└</span>
+                            ) : (
+                              <FolderTree className="h-4 w-4 text-primary shrink-0" />
+                            )}
+                            <span
+                              className={`font-medium truncate max-w-[200px] ${
+                                isInactive ? "text-muted-foreground line-through" : "text-foreground"
+                              }`}
+                            >
+                              {category.name}
+                            </span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-xs text-muted-foreground truncate max-w-[160px]">
+                          {category.slug}
+                        </td>
+                        <td className="px-6 py-4">
                           {isSubcategory ? (
-                            <span className="text-muted-foreground pl-3 text-xs">└</span>
+                            <Badge variant="outline" className="whitespace-nowrap gap-1">
+                              <Layers className="h-3 w-3" />
+                              {parentName}
+                            </Badge>
                           ) : (
-                            <FolderTree className="h-4 w-4 text-primary shrink-0" />
+                            <Badge variant="instock" className="whitespace-nowrap">
+                              Top Level
+                            </Badge>
                           )}
-                          <span className="font-medium text-foreground truncate max-w-[200px]">
-                            {category.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 font-mono text-xs text-muted-foreground truncate max-w-[160px]">
-                        {category.slug}
-                      </td>
-                      <td className="px-6 py-4">
-                        {isSubcategory ? (
-                          <Badge variant="outline" className="whitespace-nowrap gap-1">
-                            <Layers className="h-3 w-3" />
-                            {parentName}
-                          </Badge>
-                        ) : (
-                          <Badge variant="instock" className="whitespace-nowrap">
-                            Top Level
-                          </Badge>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-muted-foreground">
-                        {!isSubcategory && category.children ? (
-                          <span className="font-mono text-xs">
-                            {category.children.length} subcategories
-                          </span>
-                        ) : (
-                          <span className="text-xs text-muted-foreground/60">—</span>
-                        )}
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleOpenEditModal({ category, parentName: parentName ?? undefined })}
-                            className="h-8 w-8 p-0"
-                            aria-label={`Edit ${category.name}`}
+                        </td>
+                        <td className="px-6 py-4 text-muted-foreground">
+                          {!isSubcategory && category.children ? (
+                            <span className="font-mono text-xs">
+                              {category.children.length} subcategories
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground/60">—</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          <Badge
+                            variant={isInactive ? "destructive" : "default"}
+                            className="whitespace-nowrap"
                           >
-                            <Edit2 className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDelete(category)}
-                            className="h-8 w-8 p-0 text-destructive hover:text-destructive"
-                            aria-label={`Delete ${category.name}`}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                            {isInactive ? "Inactive" : "Active"}
+                          </Badge>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() =>
+                                handleOpenEditModal({
+                                  category,
+                                  parentName: parentName ?? undefined,
+                                })
+                              }
+                              className="h-8 w-8 p-0"
+                              aria-label={`Edit ${category.name}`}
+                              title="Edit category"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </Button>
+                            {isInactive ? (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRestore(category)}
+                                disabled={restoreCategoryMutation.isPending}
+                                className="h-8 w-8 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                aria-label={`Restore ${category.name}`}
+                                title="Restore category"
+                              >
+                                <RotateCcw className="h-4 w-4" />
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDelete(category)}
+                                disabled={deleteCategoryMutation.isPending}
+                                className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                                aria-label={`Delete ${category.name}`}
+                                title="Delete category"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -323,8 +397,10 @@ function AdminCategoriesPage() {
                   Parent Category (Optional)
                 </label>
                 <select
-                  value={parentId ?? ""}
-                  onChange={(e) => setParentId(e.target.value ? Number(e.target.value) : null)}
+                  value={parentId !== null && parentId !== undefined ? String(parentId) : ""}
+                  onChange={(e) =>
+                    setParentId(e.target.value ? Number(e.target.value) : null)
+                  }
                   className="mt-1.5 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-2 focus-visible:outline-primary"
                 >
                   <option value="">None (Top-Level Category)</option>

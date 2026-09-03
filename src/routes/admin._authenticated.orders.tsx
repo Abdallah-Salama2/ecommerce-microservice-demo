@@ -1,6 +1,13 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Search, ChevronLeft, ChevronRight, Eye, ShoppingCart, Filter } from "lucide-react";
+import {
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  ShoppingCart,
+  Filter,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +23,12 @@ export const Route = createFileRoute("/admin/_authenticated/orders")({
 
 const STATUS_TABS = [
   { key: "ALL", label: "All Orders" },
-  { key: "PENDING", label: "Pending" },
-  { key: "PROCESSING", label: "Processing" },
-  { key: "SHIPPED", label: "Shipped" },
-  { key: "DELIVERED", label: "Delivered" },
-  { key: "CANCELLED", label: "Cancelled" },
+  { key: "Pending", label: "Pending" },
+  { key: "Processing", label: "Processing" },
+  { key: "Confirmed", label: "Confirmed" },
+  { key: "Shipped", label: "Shipped" },
+  { key: "Delivered", label: "Delivered" },
+  { key: "Cancelled", label: "Cancelled" },
 ];
 
 function AdminOrdersListPage() {
@@ -31,7 +39,7 @@ function AdminOrdersListPage() {
   const statusParam = activeTab === "ALL" ? undefined : activeTab;
   const { data, isLoading, error } = useAdminOrders({
     page: currentPage,
-    limit: 10,
+    pageSize: 10,
     ...(statusParam ? { status: statusParam } : {}),
   });
 
@@ -44,8 +52,11 @@ function AdminOrdersListPage() {
     const term = searchTerm.toLowerCase();
     const orderIdStr = String(order.id).toLowerCase();
     const email = order.user?.email?.toLowerCase() || "";
-    const name = `${order.user?.firstName || ""} ${order.user?.lastName || ""}`.toLowerCase();
-    return orderIdStr.includes(term) || email.includes(term) || name.includes(term);
+    const name =
+      `${order.user?.firstName || ""} ${order.user?.lastName || ""}`.toLowerCase();
+    return (
+      orderIdStr.includes(term) || email.includes(term) || name.includes(term)
+    );
   });
 
   const getStatusBadgeVariant = (status: string) => {
@@ -54,6 +65,8 @@ function AdminOrdersListPage() {
         return "pending";
       case "PROCESSING":
         return "processing";
+      case "CONFIRMED":
+        return "confirmed";
       case "SHIPPED":
         return "shipped";
       case "DELIVERED":
@@ -73,7 +86,8 @@ function AdminOrdersListPage() {
           Orders Management
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Monitor customer orders, review details, and update fulfillment statuses.
+          Monitor customer orders, review details, and update fulfillment
+          statuses.
         </p>
       </div>
 
@@ -92,7 +106,7 @@ function AdminOrdersListPage() {
                 "rounded-md px-3.5 py-1.5 text-xs font-semibold uppercase tracking-wider transition-colors",
                 isActive
                   ? "bg-primary text-primary-foreground"
-                  : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground"
+                  : "bg-card text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               {tab.label}
@@ -143,9 +157,13 @@ function AdminOrdersListPage() {
               </table>
             </div>
           ) : error ? (
-            <div className="p-12 text-center text-destructive">Failed to load orders.</div>
+            <div className="p-12 text-center text-destructive">
+              Failed to load orders.
+            </div>
           ) : filteredOrders.length === 0 ? (
-            <div className="p-12 text-center text-muted-foreground">No orders found.</div>
+            <div className="p-12 text-center text-muted-foreground">
+              No orders found.
+            </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
@@ -163,22 +181,29 @@ function AdminOrdersListPage() {
                 <tbody className="divide-y divide-border">
                   {filteredOrders.map((order) => {
                     const statusVariant = getStatusBadgeVariant(order.status);
-                    const itemCount = order.items?.reduce((acc, i) => acc + i.quantity, 0) ?? 0;
-                    const dateStr = new Date(order.createdAt).toLocaleDateString("en-US", {
+                    const itemCount = order.itemCount ?? 0;
+                    const dateStr = new Date(
+                      order.createdAt,
+                    ).toLocaleDateString("en-US", {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
                     });
 
                     return (
-                      <tr key={order.id} className="hover:bg-muted/30 transition-colors">
+                      <tr
+                        key={order.id}
+                        className="hover:bg-muted/30 transition-colors"
+                      >
                         <td className="px-6 py-4 font-mono text-xs font-semibold text-foreground">
                           #{order.id}
                         </td>
                         <td className="px-6 py-4">
                           <div className="min-w-0">
                             <p className="truncate font-medium text-foreground max-w-[180px]">
-                              {order.user ? `${order.user.firstName} ${order.user.lastName}` : "Guest User"}
+                              {order.user
+                                ? `${order.user.firstName} ${order.user.lastName}`
+                                : "Guest User"}
                             </p>
                             <p className="truncate text-xs text-muted-foreground max-w-[180px]">
                               {order.user?.email || "No email"}
@@ -195,13 +220,24 @@ function AdminOrdersListPage() {
                           {dateStr}
                         </td>
                         <td className="px-6 py-4">
-                          <Badge variant={statusVariant} className="whitespace-nowrap">
+                          <Badge
+                            variant={statusVariant}
+                            className="whitespace-nowrap"
+                          >
                             {order.status}
                           </Badge>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <Button asChild variant="secondary" size="sm" className="gap-1.5">
-                            <Link to="/admin/orders/$id" params={{ id: String(order.id) }}>
+                          <Button
+                            asChild
+                            variant="secondary"
+                            size="sm"
+                            className="gap-1.5"
+                          >
+                            <Link
+                              to="/admin/orders/$id"
+                              params={{ id: String(order.id) }}
+                            >
                               <Eye className="h-3.5 w-3.5" />
                               Inspect
                             </Link>
@@ -226,7 +262,9 @@ function AdminOrdersListPage() {
                   variant="outline"
                   size="sm"
                   disabled={currentPage <= 1}
-                  onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+                  onClick={() =>
+                    setCurrentPage((prev) => Math.max(prev - 1, 1))
+                  }
                   className="gap-1"
                 >
                   <ChevronLeft className="h-4 w-4" />

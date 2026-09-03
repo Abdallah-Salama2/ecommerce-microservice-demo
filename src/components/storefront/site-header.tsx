@@ -1,10 +1,23 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { Search, Heart, ShoppingBag, Menu, User, LogOut, LayoutDashboard, Sun, Moon } from "lucide-react";
+import {
+  Search,
+  Heart,
+  ShoppingBag,
+  Menu,
+  User,
+  LogOut,
+  LayoutDashboard,
+  Sun,
+  Moon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Drawer } from "@/components/ui/panel";
 import { Container } from "@/components/storefront/section";
-import { MiniCartContents, MiniCartFooter } from "@/components/storefront/mini-cart";
+import {
+  MiniCartContents,
+  MiniCartFooter,
+} from "@/components/storefront/mini-cart";
 import { useAuthStore } from "@/store/auth";
 import { useCart } from "@/hooks/use-api";
 import { useTheme } from "@/components/theme-provider";
@@ -12,7 +25,7 @@ import { toast } from "sonner";
 const nav = [
   { to: "/shop", label: "Shop all" },
   { to: "/categories", label: "Categories" },
-  { to: "/", label: "Home" },
+  // { to: "/", label: "Home" },
   { to: "/about", label: "About us" },
 ];
 
@@ -33,7 +46,7 @@ export function SiteHeader() {
   }, []);
 
   // FIX: Make admin check reactive by deriving it directly from the reactive 'user' state
-  const isUserAdmin = user?.roles?.includes('Admin') || false;
+  const isUserAdmin = user?.roles?.includes("Admin") || false;
 
   const handleLogout = async () => {
     await logout();
@@ -64,13 +77,29 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon" aria-label="Search" onClick={() => navigate({ to: "/search" })}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Search"
+            onClick={() => navigate({ to: "/search" })}
+          >
             <Search />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Wishlist" onClick={() => navigate({ to: "/account/wishlist" })}>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Wishlist"
+            onClick={() => navigate({ to: "/account/wishlist" })}
+          >
             <Heart />
           </Button>
-          <Button variant="ghost" size="icon" aria-label="Open cart" onClick={() => setCartOpen(true)} className="relative">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Open cart"
+            onClick={() => setCartOpen(true)}
+            className="relative"
+          >
             <ShoppingBag />
             {itemCount > 0 && (
               <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-medium text-primary-foreground">
@@ -84,7 +113,15 @@ export function SiteHeader() {
             aria-label="Toggle theme"
             onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           >
-            {mounted ? (theme === "dark" ? <Sun /> : <Moon />) : <div className="h-5 w-5" />}
+            {mounted ? (
+              theme === "dark" ? (
+                <Sun />
+              ) : (
+                <Moon />
+              )
+            ) : (
+              <div className="h-5 w-5" />
+            )}
           </Button>
 
           {isAuthenticated ? (
@@ -145,7 +182,7 @@ export function SiteHeader() {
         open={cartOpen}
         onOpenChange={setCartOpen}
         title="Your bag"
-        description={`${itemCount} item${itemCount !== 1 ? 's' : ''} in your cart`}
+        description={`${itemCount} item${itemCount !== 1 ? "s" : ""} in your cart`}
         footer={<MiniCartFooter />}
       >
         <MiniCartContents />
@@ -166,7 +203,9 @@ export function SiteHeader() {
           <div className="border-t border-border py-4">
             {isAuthenticated ? (
               <>
-                <p className="rule-label mb-4">Signed in as {user?.firstName}</p>
+                <p className="rule-label mb-4">
+                  Signed in as {user?.firstName}
+                </p>
                 <Link
                   to="/dashboard"
                   onClick={() => setMenuOpen(false)}

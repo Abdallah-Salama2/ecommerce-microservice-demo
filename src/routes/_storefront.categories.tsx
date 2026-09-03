@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Container, SectionHeading } from "@/components/storefront/section";
-import { useCategories, useProducts } from "@/hooks/use-api";
-import { getProductPrimaryImage, type Product } from "@/types";
+import { useCategories, useProducts, useProductThumbnailsBatch } from "@/hooks/use-api";
+import { getProductIdNumber, type Product } from "@/types";
 import { resolveImageUrl } from "@/lib/utils";
 
 export const Route = createFileRoute("/_storefront/categories")({
@@ -26,17 +26,22 @@ export const Route = createFileRoute("/_storefront/categories")({
 
 function CategoriesPage() {
   const { data: categoriesData, isLoading: categoriesLoading } = useCategories();
-  const { data: productsData } = useProducts({ page: 1, limit: 100 });
+  const { data: productsData } = useProducts({ page: 1, pageSize: 100 });
 
   const categories = categoriesData?.data || [];
   const products = productsData?.data || ([] as Product[]);
+
+  // Fetch product thumbnails in batch
+  const productIds = products.map(p => getProductIdNumber(p));
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const thumbnails = thumbnailsData?.data || [];
 
   // Helper function to get category image - checks all nested subcategories
   const getCategoryImage = (category: any) => {
     // Collect all category IDs including nested children
     const getAllCategoryIds = (cat: any): number[] => {
       const ids = [cat.id];
-      cat.children.forEach((child: any) => {
+      cat.children?.forEach((child: any) => {
         ids.push(...getAllCategoryIds(child));
       });
       return ids;
@@ -46,8 +51,13 @@ function CategoriesPage() {
     const categoryProducts = products.filter((p: any) => categoryIds.includes(p.categoryId));
 
     if (categoryProducts.length > 0) {
-      const randomProduct = categoryProducts[Math.floor(Math.random() * categoryProducts.length)];
-      return randomProduct ? resolveImageUrl(getProductPrimaryImage(randomProduct).thumbnailUrl) : null;
+      for (const cp of categoryProducts) {
+        const cpId = getProductIdNumber(cp);
+        const thumb = thumbnails.find((t) => t.productId === cpId)?.thumbnailUrl;
+        if (thumb) {
+          return resolveImageUrl(thumb);
+        }
+      }
     }
 
     // Fallback: if no products, try to use a category-specific placeholder based on slug

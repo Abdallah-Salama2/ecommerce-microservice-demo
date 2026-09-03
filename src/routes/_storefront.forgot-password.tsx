@@ -26,8 +26,8 @@ export const Route = createFileRoute("/_storefront/forgot-password")({
 });
 
 function ForgotPasswordPage() {
-  const { forgotPassword, isLoading, error, clearError } = useAuthStore();
-  
+  const { forgotPassword, isLoading, error: authError, clearError } = useAuthStore();
+
   const {
     register,
     handleSubmit,
@@ -40,9 +40,9 @@ function ForgotPasswordPage() {
     clearError();
     try {
       await forgotPassword(data.email);
-      toast.success("Password reset email sent! Check your inbox.");
+      toast.success("If that email exists, a reset link has been sent");
     } catch (err) {
-      toast.error(error || "Failed to send reset email. Please try again.");
+      toast.error(authError || "Failed to send reset email. Please try again.");
     }
   };
 

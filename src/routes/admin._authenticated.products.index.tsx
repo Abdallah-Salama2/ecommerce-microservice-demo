@@ -8,8 +8,8 @@ import { PriceTag } from "@/components/ui/price-tag";
 import { StockBadge } from "@/components/storefront/stock-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TableRowSkeleton } from "@/components/ui/skeletons";
-import { useAdminProducts, useCategories, useDeleteProduct, useRestoreProduct } from "@/hooks/use-api";
-import { getProductPrimaryImage, getProductIdNumber } from "@/types";
+import { useAdminProducts, useCategories, useDeleteProduct, useRestoreProduct, useStockBatch, useProductThumbnailsBatch } from "@/hooks/use-api";
+import { getProductPrimaryImage, getProductIdNumber, getProductStock } from "@/types";
 import { resolveImageUrl } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -23,7 +23,7 @@ function AdminProductsIndexPage() {
 
   const { data: productsData, isLoading, error } = useAdminProducts({
     page: currentPage,
-    limit: 10,
+    pageSize: 10,
     ...(searchTerm.trim() ? { searchTerm: searchTerm.trim() } : {}),
   });
 
@@ -34,6 +34,13 @@ function AdminProductsIndexPage() {
   const products = productsData?.data || [];
   const pagination = productsData?.pagination;
   const categories = categoriesData?.data || [];
+
+  // Fetch stock and thumbnails from microservices for all visible products
+  const productIds = products.map(p => getProductIdNumber(p));
+  const { data: stockData } = useStockBatch(productIds);
+  const stockItems = stockData?.data || [];
+  const { data: thumbnailsData } = useProductThumbnailsBatch(productIds);
+  const thumbnails = thumbnailsData?.data || [];
 
   const getCategoryName = (categoryId: number) => {
     const category = categories.find((c) => c.id === categoryId);
@@ -155,10 +162,15 @@ function AdminProductsIndexPage() {
                 </thead>
                 <tbody className="divide-y divide-border">
                   {products.map((product) => {
-                    const primaryImg = getProductPrimaryImage(product);
-                    const categoryName = getCategoryName(product.categoryId);
                     const idNum = getProductIdNumber(product);
+                    const thumb = thumbnails.find((t) => Number(t.productId) === idNum)?.thumbnailUrl || getProductPrimaryImage(product).thumbnailUrl;
+                    const imageUrl = thumb ? resolveImageUrl(thumb) : null;
+                    const categoryName = getCategoryName(product.categoryId);
                     const isInactive = product.isActive === false;
+                    const stockItem = stockItems.find(
+                      (i) => Number(i.product_id) === idNum || Number((i as any).productId) === idNum
+                    );
+                    const resolvedStock = stockItem !== undefined ? stockItem.quantity : undefined;
 
                     return (
                       <tr
@@ -169,9 +181,9 @@ function AdminProductsIndexPage() {
                           }`}
                       >
                         <td className="px-6 py-4">
-                          {primaryImg.thumbnailUrl ? (
+                          {imageUrl ? (
                             <img
-                              src={resolveImageUrl(primaryImg.thumbnailUrl)}
+                              src={imageUrl}
                               alt={product.name}
                               className={`h-12 w-12 rounded-sm object-cover border border-border bg-surface shrink-0 ${isInactive ? 'grayscale opacity-50' : ''
                                 }`}
@@ -202,7 +214,7 @@ function AdminProductsIndexPage() {
                           <PriceTag amount={product.price} size="sm" />
                         </td>
                         <td className="px-6 py-4">
-                          <StockBadge stock={product.stockQuantity} showCount />
+                          <StockBadge stock={resolvedStock} showCount />
                         </td>
                         <td className="px-6 py-4">
                           <Badge
@@ -216,8 +228,8 @@ function AdminProductsIndexPage() {
                           <div className="flex items-center justify-end gap-2">
                             <Button asChild variant="ghost" size="sm" className="h-8 w-8 p-0">
                               <Link
-                                to="/admin/products/$id/edit"
-                                params={{ id: idNum }}
+                                to="/admin/products/$slug/edit"
+                                params={{ slug: product.slug }}
                                 aria-label={`Edit ${product.name}`}
                               >
                                 <Edit2 className="h-4 w-4" />
