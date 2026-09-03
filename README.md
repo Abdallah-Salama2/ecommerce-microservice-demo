@@ -14,7 +14,7 @@
 
 This frontend is decoupled and built to communicate with a distributed microservices backend ecosystem or an API Gateway.
 
-- **Backend Repository**: [🔗 Microservices Backend Repository]([https://github.com/your-username-or-org/ecommerce-microservices-backend](https://github.com/Abdallah-Salama2/E-Commerce-Microservices-Platform))
+- **Backend Repository**: [🔗 Microservices Backend Repository](https://github.com/Abdallah-Salama2/E-Commerce-Microservices-Platform)
 - **API Base Gateway**: Configured via `VITE_API_BASE_URL` (Defaults to `http://localhost/api`)
 
 ```
@@ -45,20 +45,22 @@ This frontend is decoupled and built to communicate with a distributed microserv
 ```
 
 ### Microservice Endpoints Consumed
-| Service | Primary Endpoints | Responsibilities |
-| :--- | :--- | :--- |
-| **Auth & User Service** | `/api/auth/*`, `/api/users/*` | JWT authentication, silent refresh token rotation, user profiles, shipping addresses |
-| **Catalog / Product Service** | `/api/products/*`, `/api/categories/*` | Paginated product browsing, category tree, filtering, search, slug details |
-| **Media Service** | `/api/products/:id/images`, `/api/products/images/batch` | Image uploads, media storage, batch thumbnail resolver |
-| **Inventory / Stock Service** | `/api/stock/batch`, `/api/products/:id/stock` | Batch real-time stock levels, low-stock alerts, stock delta/absolute updates |
-| **Cart Service** | `/api/cart/*` | Server-side & client-side cart synchronization, item quantity mutations |
-| **Order & Checkout Service** | `/api/orders/*`, `/api/checkout/*` | Multi-step checkout, order status lifecycle, invoice tracking, admin fulfillment |
+
+| Service                       | Primary Endpoints                                        | Responsibilities                                                                     |
+| :---------------------------- | :------------------------------------------------------- | :----------------------------------------------------------------------------------- |
+| **Auth & User Service**       | `/api/auth/*`, `/api/users/*`                            | JWT authentication, silent refresh token rotation, user profiles, shipping addresses |
+| **Catalog / Product Service** | `/api/products/*`, `/api/categories/*`                   | Paginated product browsing, category tree, filtering, search, slug details           |
+| **Media Service**             | `/api/products/:id/images`, `/api/products/images/batch` | Image uploads, media storage, batch thumbnail resolver                               |
+| **Inventory / Stock Service** | `/api/stock/batch`, `/api/products/:id/stock`            | Batch real-time stock levels, low-stock alerts, stock delta/absolute updates         |
+| **Cart Service**              | `/api/cart/*`                                            | Server-side & client-side cart synchronization, item quantity mutations              |
+| **Order & Checkout Service**  | `/api/orders/*`, `/api/checkout/*`                       | Multi-step checkout, order status lifecycle, invoice tracking, admin fulfillment     |
 
 ---
 
 ## ✨ Features
 
 ### 🛍️ Customer Storefront
+
 - **Modern Homepage & Showcase**: Dynamic hero sections, trending collections, and category highlights.
 - **Product Catalog & Filtering**: Search bar, category filters, price sorting, and paginated navigation.
 - **Dynamic Product Pages**: High-resolution image galleries, rich descriptions, dynamic stock badges, and quantity selectors.
@@ -69,6 +71,7 @@ This frontend is decoupled and built to communicate with a distributed microserv
 - **User Authentication**: Secure Login, Registration, Forgot Password, and Account Dashboard with order history.
 
 ### 🛡️ Admin Backoffice Dashboard
+
 - **Role-Based Access Control**: Protected `/admin` routes accessible only by authenticated administrators.
 - **Analytics Overview**: Store metrics, revenue stats, active customer counts, and recent order feeds.
 - **Product Management (CRUD)**: Create new products, edit by ID or Slug, manage inventory thresholds, and upload product gallery media.
@@ -78,6 +81,7 @@ This frontend is decoupled and built to communicate with a distributed microserv
 - **Customer Directory**: View customer profiles, order history, and contact information.
 
 ### ⚡ Architectural Highlights
+
 - **TanStack Router**: 100% type-safe file-based routing and parameter validation.
 - **TanStack Query v5**: Stale-while-revalidate caching, automatic query invalidation, and background synchronization.
 - **Batching & Performance**: Specialized batch requests for thumbnails and stock to eliminate N+1 API overhead.
@@ -129,27 +133,33 @@ my-store/
 ## 🚀 Getting Started
 
 ### Prerequisites
+
 - [Node.js](https://nodejs.org/) (version 18.x or higher) or [Bun](https://bun.sh/)
 - Running backend microservices instance (or mock API gateway)
 
 ### 1. Clone the Repository
+
 ```bash
 git clone https://github.com/your-username/my-store.git
 cd my-store
 ```
 
 ### 2. Configure Environment Variables
+
 Copy `.env.example` to `.env`:
+
 ```bash
 cp .env.example .env
 ```
 
 Edit `.env` to point to your backend API Gateway:
+
 ```env
 VITE_API_BASE_URL=http://localhost/api
 ```
 
 ### 3. Install Dependencies
+
 ```bash
 # Using npm
 npm install
@@ -159,6 +169,7 @@ bun install
 ```
 
 ### 4. Run Development Server
+
 ```bash
 npm run dev
 # or
@@ -168,6 +179,7 @@ bun run dev
 The application will be running locally at `http://localhost:3000` (or the port specified in console output).
 
 ### 5. Build for Production
+
 ```bash
 npm run build
 npm run preview
@@ -177,13 +189,13 @@ npm run preview
 
 ## 📄 Scripts
 
-| Command | Description |
-| :--- | :--- |
-| `npm run dev` | Starts the local development server |
-| `npm run build` | Builds the application for production (SSR output with Nitro) |
-| `npm run preview` | Previews the production build locally |
-| `npm run lint` | Runs ESLint across the codebase |
-| `npm run format` | Formats code with Prettier |
+| Command           | Description                                                   |
+| :---------------- | :------------------------------------------------------------ |
+| `npm run dev`     | Starts the local development server                           |
+| `npm run build`   | Builds the application for production (SSR output with Nitro) |
+| `npm run preview` | Previews the production build locally                         |
+| `npm run lint`    | Runs ESLint across the codebase                               |
+| `npm run format`  | Formats code with Prettier                                    |
 
 ---
 
@@ -191,4 +203,4 @@ npm run preview
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
-> *Note: This application was created as an AI-powered demo illustrating best practices for modern fullstack React applications connecting to microservices architectures.*
+> _Note: This application was created as an AI-powered demo illustrating best practices for modern fullstack React applications connecting to microservices architectures._
