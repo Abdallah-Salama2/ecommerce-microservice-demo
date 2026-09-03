@@ -14,7 +14,7 @@
 
 This frontend is decoupled and built to communicate with a distributed microservices backend ecosystem or an API Gateway.
 
-- **Backend Repository**: [🔗 Microservices Backend Repository](https://github.com/Abdallah-Salama2/E-Commerce-Microservices-Platform)
+- **Backend Repository**: [Microservices Backend Repository](https://github.com/Abdallah-Salama2/E-Commerce-Microservices-Platform)
 - **API Base Gateway**: Configured via `VITE_API_BASE_URL` (Defaults to `http://localhost/api`)
 
 ```
